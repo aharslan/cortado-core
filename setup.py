@@ -45,6 +45,10 @@ setup(
         "cortado_core.eventually_follows_pattern_mining.local_process_models.similarity",
         "cortado_core.sequentializer",
         "cortado_core.variant_pattern_replications",
+        "cortado_core.negative_process_model_repair",
+        "cortado_core.negative_process_model_repair.removal_strategies",
+        "cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction",
+        "cortado_core.negative_process_model_repair.removal_strategies.candidate_identification",
     ],
     install_requires=[
         "matplotlib==3.6.2",
