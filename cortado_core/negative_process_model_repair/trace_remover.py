@@ -63,7 +63,7 @@ def apply_negative_process_model_repair(
 
     resulting_tree = copy.deepcopy(pt)
 
-    repair_strategy = CompleteBruteForceSubtreeUpdate(
+    repair_strategy = HeuristicBruteForceSubtreeUpdate(
         removal_candidates_generator, removal_candidate_activities
     )
     (
@@ -72,7 +72,7 @@ def apply_negative_process_model_repair(
         percentage_positive_traces_conforming_rule_based,
         resulting_tree_edit_distance_rule_based,
         applied_rules
-    ) = repair_strategy.apply_complete_brute_force_subtree_update_based_reduction()
+    ) = repair_strategy.apply_heuristic_brute_force_subtree_update_based_reduction()
 
     resulting_tree = resulting_tree_brute_force_subtree_update_based
 

@@ -359,7 +359,17 @@ class ParallelUpdateRule(UpdateRule):
                 removed_child.parent = sequence
                 sequence.children.append(removed_child)
 
-        tree_update_reference_node.children.append(sequence)
+        if len(tree_update_reference_node.children) > 0:
+            tree_update_reference_node.children.append(sequence)
+        elif len(tree_update_reference_node.children) == 0:
+            if tree_update_reference_node.parent is None:
+                tree_to_update = sequence
+            elif tree_update_reference_node.parent is not None:
+                for i in range(0, len(tree_update_reference_node.parent.children)):
+                    if tree_update_reference_node.parent.children[i].id == tree_update_reference_node.id:
+                        tree_update_reference_node.parent.children[i] = sequence
+                        break
+
         return tree_to_update
 
 
