@@ -28,27 +28,28 @@ class HeuristicBruteForceSubtreeUpdate(SubtreeUpdate):
             tree_to_update = copy.deepcopy(self.removal_candidates_generator.process_tree)
             result = None
 
-            # if removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
-            #     result = self.handle_sequence_operator(
-            #         removal_candidate_subtree, tree_to_update
-            #     )
-            #
-            # elif removal_candidate_subtree.reference.operator == Operator.XOR:
-            #     result = self.handle_choice_operator(
-            #         removal_candidate_subtree, tree_to_update
-            #     )
+            if removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
+                result = self.handle_sequence_operator(
+                    removal_candidate_subtree, tree_to_update
+                )
 
-            if (
+            elif removal_candidate_subtree.reference.operator == Operator.XOR:
+                result = self.handle_choice_operator(
+                    removal_candidate_subtree, tree_to_update
+                )
+
+            elif (
                 removal_candidate_subtree.reference.operator == Operator.PARALLEL
             ):
                 result = self.handle_parallel_operator(
                     removal_candidate_subtree, tree_to_update
                 )
 
-            # elif removal_candidate_subtree.reference.operator == Operator.LOOP:
-            #     result = self.handle_loop_operator(
-            #         removal_candidate_subtree, tree_to_update
-            #     )
+            elif removal_candidate_subtree.reference.operator == Operator.LOOP:
+                result = self.handle_loop_operator(
+                    removal_candidate_subtree, tree_to_update
+                )
+
             if result is not None:
                 if isinstance(result, list):
                     brute_force_results.extend(result)
@@ -59,10 +60,15 @@ class HeuristicBruteForceSubtreeUpdate(SubtreeUpdate):
                                      key=lambda x: (
                                          -x["percentage_positive_traces_conforming"], x["resulting_tree_edit_distance"])
                                      )
-        return (
-            brute_force_results[0]['updated_tree'], True,
-            brute_force_results[0]['percentage_positive_traces_conforming'],
-            brute_force_results[0]['resulting_tree_edit_distance'], brute_force_results[0]['applied_rule'])
+
+        if len(brute_force_results) > 0:
+            return (
+                brute_force_results[0]['updated_tree'], True,
+                brute_force_results[0]['percentage_positive_traces_conforming'],
+                brute_force_results[0]['resulting_tree_edit_distance'],
+                brute_force_results[0]['applied_rule'])
+        else:
+            return (None, False, None, None, None)
 
         # successful_brute_Force_results = [token for token in brute_force_results if
         #                                   token['negative_trace_fits'] == False]
@@ -76,7 +82,7 @@ class HeuristicBruteForceSubtreeUpdate(SubtreeUpdate):
         #         successful_brute_Force_results[0]['updated_tree'], True,
         #         successful_brute_Force_results[0]['percentage_positive_traces_conforming'],
         #         successful_brute_Force_results[0]['resulting_tree_edit_distance'],
-        #         brute_force_results[0]['applied_rule'])
+        #         successful_brute_Force_results[0]['applied_rule'])
         # else:
         #     return (None, False, None, None, None)
 
