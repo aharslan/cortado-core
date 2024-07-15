@@ -1,6 +1,10 @@
 import copy
+from trace import Trace
+
+from pm4py.objects.log.obj import Event
 from pm4py.objects.process_tree.obj import Operator, ProcessTree
 from cortado_core.freezing.reinsert_frozen_subtrees import post_process_tree
+from cortado_core.models.infix_type import InfixType
 from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.candidate_activity import \
     CandidateActivity
 from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.candidate_subtree import \
@@ -10,12 +14,15 @@ from cortado_core.negative_process_model_repair.removal_strategies.candidate_ide
 from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.update_rule import \
     SequenceUpdateRule, ChoiceUpdateRule
 from cortado_core.utils.alignment_utils import typed_trace_fits_process_tree
-from cortado_core.negative_process_model_repair.temp_utils import calculate_process_tree_edit_distance
+from cortado_core.negative_process_model_repair.temp_utils import calculate_process_tree_edit_distance, \
+    find_tree_node_by_id
 from cortado_core.negative_process_model_repair.temp_utils import (
     calculate_percentage_traces_conforming
 )
 import itertools
 from collections import Counter
+from cortado_core.negative_process_model_repair.constants import Constants
+from cortado_core.utils.trace import TypedTrace
 
 
 class SubtreeUpdate:
@@ -47,6 +54,7 @@ class SubtreeUpdate:
             'updated_tree': process_tree,
             'candidate_subtree': removal_candidate_subtree,
             'applied_rule': applied_rule,
+            'thresholds_met': False
         }
 
         try:
@@ -54,22 +62,62 @@ class SubtreeUpdate:
                 process_tree != self.removal_candidates_generator.process_tree
                 and process_tree is not None
             ):
-                post_process_tree(process_tree, [])
+                process_tree = post_process_tree(process_tree, [])
+
+                statistics['updated_tree'] = process_tree
+
+                parent_sub_tree = process_tree
+                if Constants.USE_SUBTREE_BASED_CONFORMANCE_CHECKING == True:
+                    if removal_candidate_subtree.reference.parent is None:
+                        parent_sub_tree = process_tree
+                    else:
+                        found = False
+                        reference = removal_candidate_subtree.reference
+                        while not found:
+                            if reference.parent is not None:
+
+                                if not hasattr(reference, 'id'):
+                                    reference = reference.parent
+                                    continue
+
+                                tree_node = find_tree_node_by_id(reference.id, process_tree)
+                                if tree_node is not None:
+                                    parent_sub_tree = copy.deepcopy(tree_node)
+                                    parent_sub_tree.parent = None
+                                    found = True
+                                else:
+                                    reference = reference.parent
+                            else:
+                                parent_sub_tree = process_tree
+                                found = True
+
                 # apply_reduction_rules(candidate_updated_tree)
 
                 tree_updated = True
+                negative_sub_trace = self.removal_candidates_generator.negative_trace
+                positive_sub_traces = self.removal_candidates_generator.fitting_traces
+
+                if parent_sub_tree != process_tree and Constants.USE_SUBTREE_BASED_CONFORMANCE_CHECKING == True:
+                    negative_sub_trace = get_sub_trace_using_sublog([self.removal_candidates_generator.negative_trace],
+                                                                    self.removal_candidates_generator.remove_sublogs,
+                                                                    parent_sub_tree.id)[0]
+                    positive_sub_traces = get_sub_trace_using_sublog(self.removal_candidates_generator.fitting_traces,
+                                                                     self.removal_candidates_generator.keep_sublogs,
+                                                                     parent_sub_tree.id)
 
                 # step 2: check if the negative variant conforms to the tree, stop removing candidates
                 negative_trace_fits = typed_trace_fits_process_tree(
-                    self.removal_candidates_generator.negative_trace, process_tree
+                    negative_sub_trace,
+                    parent_sub_tree
                 )
 
                 percentage_positive_traces_conforming = (
                     calculate_percentage_traces_conforming(
-                        self.removal_candidates_generator.fitting_traces,
-                        process_tree,
+                        positive_sub_traces,
+                        parent_sub_tree,
                     )
                 )
+
                 resulting_tree_edit_distance = calculate_process_tree_edit_distance(
                     process_tree,
                     copy.deepcopy(self.removal_candidates_generator.process_tree)
@@ -78,6 +126,13 @@ class SubtreeUpdate:
                 statistics['negative_trace_fits'] = negative_trace_fits
                 statistics['percentage_positive_traces_conforming'] = percentage_positive_traces_conforming
                 statistics['resulting_tree_edit_distance'] = resulting_tree_edit_distance
+
+                if (statistics['negative_trace_fits'] == False
+                    and statistics[
+                        'percentage_positive_traces_conforming'] >= Constants.MIN_THRESHOLD_POSITIVE_FITTING_VARIANTS
+                    and statistics[
+                        'resulting_tree_edit_distance'] <= Constants.MAX_THRESHOLD_TREE_EDIT_DISTANCE):
+                    statistics['thresholds_met'] = True
 
         except Exception as e:
             print(e)
@@ -91,11 +146,12 @@ class SubtreeUpdate:
 
         seq_update = SequenceUpdateRule(removal_candidate_subtree)
         try:
-            return self.calculate_candidate_tree_statistics(
+            result = self.calculate_candidate_tree_statistics(
                 seq_update.apply_rule(tree_to_update),
                 removal_candidate_subtree,
                 'sequence'
             )
+            return result
         except Exception as e:
             print("Rule application failed (sequence): ", e)
 
@@ -184,6 +240,15 @@ class SubtreeUpdate:
                     subsequent_sequences_excluding_repetitions[i]))
 
         return pre_sequences, mid_sequences, post_sequences, dynamic_sequences, execution_sequence_of_child_subtrees
+
+
+def get_sub_trace_using_sublog(traces: list[TypedTrace], sublog, subtree_id: int):
+    temp_traces = []
+    for item in sublog[subtree_id]:
+        temp_trace = copy.deepcopy(traces[0])
+        temp_trace.trace = item
+        temp_traces.append(temp_trace)
+    return temp_traces
 
 
 def get_subsequent_subtree_execution_sequences_excluding_repetitions(

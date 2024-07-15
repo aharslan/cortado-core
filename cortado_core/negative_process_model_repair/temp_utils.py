@@ -332,24 +332,27 @@ def remove_subtree_from_parents_children(subtree: ProcessTree):
 
 
 def find_tree_node_by_id(tree_node_id: int, pt: ProcessTree):
-    if pt.id == tree_node_id:
-        return pt
-    elif len(pt.children) > 1:
-        i = 0
-        for child in pt.children:
-            if tree_node_id > child.id:
-                i += 1
-                if len(pt.children) == i:
-                    return find_tree_node_by_id(tree_node_id, child)
+    try:
+        if pt.id == tree_node_id:
+            return pt
+        elif len(pt.children) > 1:
+            i = 0
+            for child in pt.children:
+                if tree_node_id > child.id:
+                    i += 1
+                    if len(pt.children) == i:
+                        return find_tree_node_by_id(tree_node_id, child)
+                    else:
+                        continue
+                elif tree_node_id < child.id:
+                    return find_tree_node_by_id(tree_node_id, pt.children[i - 1])
+                elif child.id == tree_node_id:
+                    return child
                 else:
-                    continue
-            elif tree_node_id < child.id:
-                return find_tree_node_by_id(tree_node_id, pt.children[i - 1])
-            elif child.id == tree_node_id:
-                return child
-            else:
-                return None
-
+                    return None
+    except Exception as e:
+        print('Error in find_tree_node_by_id: ' + str(e))
+        return None
 
 def is_activity_in_children(activity_name: str, pt: ProcessTree):
     for child in pt.children:

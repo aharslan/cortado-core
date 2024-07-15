@@ -23,34 +23,34 @@ class CompleteBruteForceSubtreeUpdate(SubtreeUpdate):
     ):
         super().__init__(removal_candidates_generator, removal_candidate_activities)
 
-    def apply_complete_brute_force_subtree_update_based_reduction(self) -> (ProcessTree, bool, float):
+    def apply_complete_brute_force_subtree_update_based_reduction(self) -> (ProcessTree, bool, bool, float, float, str):
         brute_force_results = []
 
         for removal_candidate_subtree in self.removal_candidate_subtrees:
             tree_to_update = copy.deepcopy(self.removal_candidates_generator.process_tree)
             result = None
 
-            # if removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
-            #     result = self.handle_sequence_operator(
-            #         removal_candidate_subtree, tree_to_update
-            #     )
-            #
-            # elif removal_candidate_subtree.reference.operator == Operator.XOR:
-            #     result = self.handle_choice_operator(
-            #         removal_candidate_subtree, tree_to_update
-            #     )
+            if removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
+                result = self.handle_sequence_operator(
+                    removal_candidate_subtree, tree_to_update
+                )
 
-            if (
+            elif removal_candidate_subtree.reference.operator == Operator.XOR:
+                result = self.handle_choice_operator(
+                    removal_candidate_subtree, tree_to_update
+                )
+
+            elif removal_candidate_subtree.reference.operator == Operator.LOOP:
+                result = self.handle_loop_operator(
+                    removal_candidate_subtree, tree_to_update
+                )
+
+            elif (
                 removal_candidate_subtree.reference.operator == Operator.PARALLEL
             ):
                 result = self.handle_parallel_operator(
                     removal_candidate_subtree, tree_to_update
                 )
-
-            # elif removal_candidate_subtree.reference.operator == Operator.LOOP:
-            #     result = self.handle_loop_operator(
-            #         removal_candidate_subtree, tree_to_update
-            #     )
 
             if result is not None:
                 if isinstance(result, list):
@@ -58,100 +58,114 @@ class CompleteBruteForceSubtreeUpdate(SubtreeUpdate):
                 else:
                     brute_force_results.append(result)
 
-        brute_force_results = sorted(brute_force_results,
-                                     key=lambda x: (
-                                         -x["percentage_positive_traces_conforming"], x["resulting_tree_edit_distance"])
-                                     )
-        if len(brute_force_results) > 0:
-            return (
-                brute_force_results[0]['updated_tree'], True,
-                brute_force_results[0]['percentage_positive_traces_conforming'],
-                brute_force_results[0]['resulting_tree_edit_distance'],
-                brute_force_results[0]['applied_rule'])
-        else:
-            return (None, False, None, None, None)
+            if (Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True and
+                brute_force_results[len(brute_force_results) - 1]['thresholds_met'] == True):
+                break
 
-        # successful_brute_Force_results = [token for token in brute_force_results if
-        #                                   token['negative_trace_fits'] == False]
-        # successful_brute_Force_results = sorted(successful_brute_Force_results,
-        #                                         key=lambda x: (
-        #                                             -x["percentage_positive_traces_conforming"],
-        #                                             x["resulting_tree_edit_distance"])
-        #                                         )
-        # if len(successful_brute_Force_results) > 0:
-        #     return (
-        #         successful_brute_Force_results[0]['updated_tree'], True,
-        #         successful_brute_Force_results[0]['percentage_positive_traces_conforming'],
-        #         successful_brute_Force_results[0]['resulting_tree_edit_distance'],
-        #         successful_brute_Force_results[0]['applied_rule'])
-        # else:
-        #     return (None, False, None, None, None)
+        successful_brute_Force_results = [token for token in brute_force_results if
+                                          token['negative_trace_fits'] == False]
+        successful_brute_Force_results = sorted(successful_brute_Force_results,
+                                                key=lambda x: (
+                                                    -x["percentage_positive_traces_conforming"],
+                                                    x["resulting_tree_edit_distance"])
+                                                )
+        if len(successful_brute_Force_results) > 0:
+            return (
+                successful_brute_Force_results[0]['updated_tree'],
+                True,
+                successful_brute_Force_results[0]['thresholds_met'],
+                successful_brute_Force_results[0]['percentage_positive_traces_conforming'],
+                successful_brute_Force_results[0]['resulting_tree_edit_distance'],
+                successful_brute_Force_results[0]['applied_rule'])
+        else:
+            return (None, False, False, None, None, None)
 
     def handle_loop_operator(
         self, removal_candidate_subtree: CandidateSubtree, tree_to_update: ProcessTree
     ):
         loop_rules_results = []
         loop_update_rule = LoopUpdateRule(removal_candidate_subtree)
+        found_solution = False
 
         removal_candidate_subtree.loop_subtree_stats = (
             self.removal_candidates_generator.calculate_trace_frequencies_based_heuristics_for_loop_operator(
                 removal_candidate_subtree))
 
-        try:
-            loop_rules_results.append(
-                self.calculate_candidate_tree_statistics(
+        if found_solution == False:
+            try:
+                result = self.calculate_candidate_tree_statistics(
                     loop_update_rule.apply_remove_redundant_redo(copy.deepcopy(tree_to_update)),
                     removal_candidate_subtree,
                     'loop: remove-redundant-redo'
                 )
-            )
-        except Exception as e:
-            print("Rule application failed (loop: remove-redundant-redo): ", e)
+                loop_rules_results.append(result)
 
-        try:
-            loop_rules_results.append(
-                self.calculate_candidate_tree_statistics(
+                if (result['thresholds_met'] == True
+                    and Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True):
+                    found_solution = True
+
+            except Exception as e:
+                print("Rule application failed (loop: remove-redundant-redo): ", e)
+
+        if found_solution == False:
+            try:
+                result = self.calculate_candidate_tree_statistics(
                     loop_update_rule.apply_optional_redo_mandatory(copy.deepcopy(tree_to_update)),
                     removal_candidate_subtree,
                     'loop: optional_redo_mandatory'
                 )
-            )
-        except Exception as e:
-            print("Rule application failed (loop: optional_redo_mandatory): ", e)
+                loop_rules_results.append(result)
+
+                if (result['thresholds_met'] == True
+                    and Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True):
+                    found_solution = True
+
+            except Exception as e:
+                print("Rule application failed (loop: optional_redo_mandatory): ", e)
 
         do_frequency_remove, redo_frequency_remove = (
             self.removal_candidates_generator.get_do_and_redo_frequencies_negative_variant(removal_candidate_subtree))
 
-        combinations = self.get_all_loop_repetitions_encoding_combinations(
-            do_frequency_remove,
-            Constants.MAX_NUMBER_OF_LOOP_REPETITION_ENCODINGS,
-            Constants.MAX_LENGTH_LOOP_REPETITION_ENCODING
-        )
+        if found_solution == False:
+            combinations = self.get_all_loop_repetitions_encoding_combinations(
+                do_frequency_remove,
+                Constants.MAX_NUMBER_OF_LOOP_REPETITION_ENCODINGS,
+                Constants.MAX_LENGTH_LOOP_REPETITION_ENCODING
+            )
 
-        for combination in combinations:
-            try:
-                loop_rules_results.append(
-                    self.calculate_candidate_tree_statistics(
+            for combination in combinations:
+                try:
+                    result = self.calculate_candidate_tree_statistics(
                         loop_update_rule.apply_repeat_exactly_n(copy.deepcopy(tree_to_update), combination),
                         removal_candidate_subtree,
                         'loop: repeat_exactly_n ' + str(combination)
                     )
-                )
-            except Exception as e:
-                print("Rule application failed (loop: repeat_exactly_n): ", e)
+                    loop_rules_results.append(result)
 
-        try:
-            loop_rules_results.append(
-                self.calculate_candidate_tree_statistics(
-                    loop_update_rule.apply_repeat_at_least_n(
-                        copy.deepcopy(tree_to_update), removal_candidate_subtree.loop_subtree_stats.do_frequency_remove
-                    ),
+                    if (result['thresholds_met'] == True
+                        and Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True):
+                        found_solution = True
+                        break
+
+                except Exception as e:
+                    print("Rule application failed (loop: repeat_exactly_n): ", e)
+
+        if found_solution == False:
+            try:
+                result = self.calculate_candidate_tree_statistics(
+                    loop_update_rule.apply_repeat_at_least_n(copy.deepcopy(tree_to_update),
+                                                             removal_candidate_subtree.loop_subtree_stats.do_frequency_remove),
                     removal_candidate_subtree,
                     'loop: repeat_at_least_n'
                 )
-            )
-        except Exception as e:
-            print("Rule application failed (loop: repeat_at_least_n): ", e)
+                loop_rules_results.append(result)
+
+                if (result['thresholds_met'] == True
+                    and Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True):
+                    found_solution = True
+
+            except Exception as e:
+                print("Rule application failed (loop: repeat_at_least_n): ", e)
 
         return loop_rules_results
 
@@ -186,6 +200,7 @@ class CompleteBruteForceSubtreeUpdate(SubtreeUpdate):
         self, removal_candidate_subtree: CandidateSubtree, tree_to_update: ProcessTree
     ) -> ProcessTree:
         parallel_rules_results = []
+        found_solution = False
 
         pre_sequences, mid_sequences, post_sequences, dynamic_sequences, execution_sequence_of_child_subtrees = (
             self.get_all_possible_sequentializations_for_parallel_operator_using_neg_variant(
@@ -193,57 +208,81 @@ class CompleteBruteForceSubtreeUpdate(SubtreeUpdate):
 
         parallel_update_rule = ParallelUpdateRule(removal_candidate_subtree)
 
-        for pre_sequence in pre_sequences:
-            try:
-                parallel_rules_results.append(
-                    self.calculate_candidate_tree_statistics(
+        if found_solution == False:
+            for pre_sequence in pre_sequences:
+                try:
+                    result = self.calculate_candidate_tree_statistics(
                         parallel_update_rule.apply_pre_sequeltialization_rule(copy.deepcopy(tree_to_update),
                                                                               pre_sequence),
                         removal_candidate_subtree,
                         'parallel: pre sequentialization ' + str(pre_sequence)
                     )
-                )
-            except Exception as e:
-                print("Rule application failed (parallel: pre sequentialization): ", e)
+                    parallel_rules_results.append(result)
 
-        for post_sequence in post_sequences:
-            try:
-                parallel_rules_results.append(
-                    self.calculate_candidate_tree_statistics(
+                    if (result['thresholds_met'] == True
+                        and Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True):
+                        found_solution = True
+                        break
+
+                except Exception as e:
+                    print("Rule application failed (parallel: pre sequentialization): ", e)
+
+        if found_solution == False:
+            for post_sequence in post_sequences:
+                try:
+                    result = self.calculate_candidate_tree_statistics(
                         parallel_update_rule.apply_post_sequeltialization_rule(copy.deepcopy(tree_to_update),
                                                                                post_sequence),
                         removal_candidate_subtree,
                         'parallel: post sequentialization ' + str(post_sequence)
                     )
-                )
-            except Exception as e:
-                print("Rule application failed (parallel: post sequentialization): ", e)
+                    parallel_rules_results.append(result)
 
-        for mid_sequence in mid_sequences:
-            try:
-                parallel_rules_results.append(
-                    self.calculate_candidate_tree_statistics(
+                    if (result['thresholds_met'] == True
+                        and Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True):
+                        found_solution = True
+                        break
+
+                except Exception as e:
+                    print("Rule application failed (parallel: post sequentialization): ", e)
+
+        if found_solution == False:
+            for mid_sequence in mid_sequences:
+                try:
+                    result = self.calculate_candidate_tree_statistics(
                         parallel_update_rule.apply_mid_sequeltialization_rule(copy.deepcopy(tree_to_update),
                                                                               mid_sequence,
                                                                               execution_sequence_of_child_subtrees),
                         removal_candidate_subtree,
                         'parallel: mid sequentialization ' + str(mid_sequence)
                     )
-                )
-            except Exception as e:
-                print("Rule application failed (parallel: mid sequentialization): ", e)
+                    parallel_rules_results.append(result)
 
-        for dynamic_sequence in dynamic_sequences:
-            try:
-                parallel_rules_results.append(
-                    self.calculate_candidate_tree_statistics(
+                    if (result['thresholds_met'] == True
+                        and Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True):
+                        found_solution = True
+                        break
+
+                except Exception as e:
+                    print("Rule application failed (parallel: mid sequentialization): ", e)
+
+        if found_solution == False:
+            for dynamic_sequence in dynamic_sequences:
+                try:
+                    result = self.calculate_candidate_tree_statistics(
                         parallel_update_rule.apply_dynamic_sequeltialization_rule(copy.deepcopy(tree_to_update),
                                                                                   dynamic_sequence),
                         removal_candidate_subtree,
                         'parallel: dynamic sequentialization ' + str(dynamic_sequence)
                     )
-                )
-            except Exception as e:
-                print("Rule application failed (parallel: dynamic sequentialization): ", e)
+                    parallel_rules_results.append(result)
+
+                    if (result['thresholds_met'] == True
+                        and Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True):
+                        found_solution = True
+                        break
+
+                except Exception as e:
+                    print("Rule application failed (parallel: dynamic sequentialization): ", e)
 
         return parallel_rules_results

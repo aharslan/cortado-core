@@ -39,9 +39,10 @@ def apply_negative_process_model_repair(
     """Apply neg proc model repair using heuristic based subtree pruning and case identification
         with the fallback strategy that brute forces all possible update cases on all subtrees
     """
-    approach_used = 'Rule Based Strategy'
-    percentage_positive_variants_conforming = 0
-    resulting_tree_edit_distance = 0
+    approach_used = None
+    applied_rules = None
+    percentage_positive_variants_conforming = -1
+    resulting_tree_edit_distance = -1
 
     if type(negative_variant[0]) is not TypedTrace:
         negative_variant, negative_trace_frequency = get_traces_from_variants(negative_variant)
@@ -67,48 +68,45 @@ def apply_negative_process_model_repair(
         removal_candidates_generator, removal_candidate_activities
     )
     (
-        resulting_tree_brute_force_subtree_update_based,
-        tree_updated_brute_force_subtree_update_based,
-        percentage_positive_traces_conforming_rule_based,
-        resulting_tree_edit_distance_rule_based,
-        applied_rules
+        resulting_tree_heu_brute_force_subtree_update_based,
+        tree_updated_heu_brute_force_subtree_update_based,
+        thresholds_met_heu_brute_force_subtree_update_based,
+        percentage_positive_traces_conforming_heu_brute_force,
+        resulting_tree_edit_distance_heu_brute_force,
+        applied_rules_heu_brute_force
     ) = repair_strategy.apply_heuristic_brute_force_subtree_update_based_reduction()
 
-    resulting_tree = resulting_tree_brute_force_subtree_update_based
+    if tree_updated_heu_brute_force_subtree_update_based:
+        resulting_tree = resulting_tree_heu_brute_force_subtree_update_based
+        approach_used = 'Heuristic Brute Force'
+        percentage_positive_variants_conforming = percentage_positive_traces_conforming_heu_brute_force
+        resulting_tree_edit_distance = resulting_tree_edit_distance_heu_brute_force
+        applied_rules = applied_rules_heu_brute_force
 
+    if thresholds_met_heu_brute_force_subtree_update_based == False:
+        repair_strategy = CompleteBruteForceSubtreeUpdate(
+            removal_candidates_generator, removal_candidate_activities
+        )
+        (
+            resulting_tree_com_brute_force_subtree_update_based,
+            tree_updated_com_brute_force_subtree_update_based,
+            thresholds_met_heu_brute_force_subtree_update_based,
+            percentage_positive_traces_conforming_com_brute_force,
+            resulting_tree_edit_distance_com_brute_force,
+            applied_rules_com_brute_force
+        ) = repair_strategy.apply_complete_brute_force_subtree_update_based_reduction()
 
-    # if ((percentage_positive_traces_conforming_rule_based < Constants.MIN_THRESHOLD_POSITIVE_FITTING_VARIANTS or
-    #      resulting_tree_edit_distance_rule_based > Constants.MAX_THRESHOLD_TREE_EDIT_DISTANCE) or
-    #     not tree_updated_rule_based):
-    #     fallback_strategy = FallbackStrategy(
-    #         removal_candidates_generator, removal_candidate_activities
-    #     )
-    #     (
-    #         resulting_tree_fallback,
-    #         tree_updated_fallback,
-    #         percentage_positive_traces_conforming_fallback,
-    #         resulting_tree_edit_distance_fallback
-    #     ) = fallback_strategy.apply_fallback_strategy()
-    #
-    #     if ((percentage_positive_traces_conforming_fallback - resulting_tree_edit_distance_fallback) >
-    #             (percentage_positive_traces_conforming_rule_based - resulting_tree_edit_distance_rule_based)
-    #     ):
-    #         resulting_tree = resulting_tree_fallback
-    #         approach_used = 'Fallback Strategy'
-    #         percentage_positive_variants_conforming = percentage_positive_traces_conforming_fallback
-    #         resulting_tree_edit_distance = resulting_tree_edit_distance_fallback
-    #     else:
-    #         resulting_tree = resulting_tree_rule_based
-    #         percentage_positive_variants_conforming = percentage_positive_traces_conforming_rule_based
-    #         resulting_tree_edit_distance = resulting_tree_edit_distance_rule_based
-    # else:
-    #     resulting_tree = resulting_tree_rule_based
-    #     percentage_positive_variants_conforming = percentage_positive_traces_conforming_rule_based
-    #     resulting_tree_edit_distance = resulting_tree_edit_distance_rule_based
+        if tree_updated_com_brute_force_subtree_update_based:
+            resulting_tree = resulting_tree_com_brute_force_subtree_update_based
+            approach_used = 'Complete Brute Force'
+            percentage_positive_variants_conforming = percentage_positive_traces_conforming_com_brute_force
+            resulting_tree_edit_distance = resulting_tree_edit_distance_com_brute_force
+            applied_rules = applied_rules_com_brute_force
+
+        else:
+            resulting_tree = pt
 
     return resulting_tree, approach_used, percentage_positive_variants_conforming, resulting_tree_edit_distance, applied_rules
-
-
 
 
 def apply_frequency_rating_based_negative_process_model_repair(
@@ -169,7 +167,7 @@ def apply_frequency_rating_based_negative_process_model_repair(
         ) = fallback_strategy.apply_fallback_strategy()
 
         if ((percentage_positive_traces_conforming_fallback - resulting_tree_edit_distance_fallback) >
-                (percentage_positive_traces_conforming_rule_based - resulting_tree_edit_distance_rule_based)
+            (percentage_positive_traces_conforming_rule_based - resulting_tree_edit_distance_rule_based)
         ):
             resulting_tree = resulting_tree_fallback
             approach_used = 'Fallback Strategy'
