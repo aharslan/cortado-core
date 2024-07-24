@@ -1,3 +1,5 @@
+import operator
+import copy
 from pm4py import ProcessTree
 from cortado_core.negative_process_model_repair.neg_repair_sublog_utils import \
     calculate_sublog_for_negative_process_model_repair_with_frequency
@@ -280,11 +282,12 @@ class RemovalCandidatesGenerator:
                     removal_subtree_candidates.append(candidate_subtree)
                     removal_subtree_candidate_ids.add(parent_id)
 
-        return sorted(
+        removal_subtree_candidates = sorted(
             removal_subtree_candidates,
             key=lambda x: x.node_id,
             reverse=True,
         )
+        return copy.deepcopy(removal_subtree_candidates)
 
 
 def get_activity_frequency_in_sublogs(activity_name: str, parent_id: int, sublogs):

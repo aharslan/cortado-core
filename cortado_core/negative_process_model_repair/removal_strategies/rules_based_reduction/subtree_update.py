@@ -30,6 +30,8 @@ class SubtreeUpdate:
     removal_candidate_activities: list[CandidateActivity]
     removal_candidate_subtrees: list[CandidateSubtree]
 
+    update_operations = 0
+
     def __init__(
         self,
         removal_candidates_generator: RemovalCandidatesHeuristics,
@@ -133,6 +135,8 @@ class SubtreeUpdate:
                     and statistics[
                         'resulting_tree_edit_distance'] <= Constants.MAX_THRESHOLD_TREE_EDIT_DISTANCE):
                     statistics['thresholds_met'] = True
+
+            self.update_operations += 1
 
         except Exception as e:
             print(e)

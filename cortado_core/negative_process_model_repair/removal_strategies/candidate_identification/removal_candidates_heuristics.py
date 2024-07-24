@@ -91,19 +91,19 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
         loop_subtree_stats.min_pm_approach = ""
         if loop_subtree_stats.min_pm > loop_subtree_stats.remove_redundant_redo_pm:
             loop_subtree_stats.min_pm = loop_subtree_stats.remove_redundant_redo_pm
-            loop_subtree_stats.min_pm_approach = "remove-redundant-redo"
+            loop_subtree_stats.min_pm_approach = "remove_redundant_redo"
 
         if loop_subtree_stats.min_pm > loop_subtree_stats.optional_redo_mandatory_pm:
             loop_subtree_stats.min_pm = loop_subtree_stats.optional_redo_mandatory_pm
-            loop_subtree_stats.min_pm_approach = "optional-redo-mandatory"
+            loop_subtree_stats.min_pm_approach = "optional_redo_mandatory"
 
         if loop_subtree_stats.min_pm >= loop_subtree_stats.repeat_exactly_n_pm:
             loop_subtree_stats.min_pm = loop_subtree_stats.repeat_exactly_n_pm
-            loop_subtree_stats.min_pm_approach = "repeat-exactly-n"
+            loop_subtree_stats.min_pm_approach = "repeat_exactly_n"
 
         if loop_subtree_stats.min_pm >= loop_subtree_stats.repeat_atleast_n_pm:
             loop_subtree_stats.min_pm = loop_subtree_stats.repeat_atleast_n_pm
-            loop_subtree_stats.min_pm_approach = "repeat_atleast_n_pm"
+            loop_subtree_stats.min_pm_approach = "repeat_at_least_n"
 
         return loop_subtree_stats
 
@@ -246,251 +246,233 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
         index_k_do = 0
         index_l_do = 0
 
-        if not subtree_candidate.node_id in sublogs:
-            return [[{"name": "tau", "loop-location": "do"}]]
+        try:
+            if not subtree_candidate.node_id in sublogs:
+                return [[{"name": "tau", "loop-location": "do", "frequency": 0}]]
 
-        for i in range(len(sublogs[subtree_candidate.node_id])):
-            loop_activities.append([])
-            loop_location = "do"
+            for i in range(len(sublogs[subtree_candidate.node_id])):
+                loop_activities.append([])
+                loop_location = "do"
 
-            if len(sublogs[subtree_candidate.node_id][i]) > 0:
-                # for activity in sublogs[subtree_candidate.node_id][i]:
-                for j in range(len(sublogs[subtree_candidate.node_id][i])):
-                    success = False
-                    while not success:
-                        success = True
-                        activity = sublogs[subtree_candidate.node_id][i][j]
-                        loop_activity = {
-                            "name": activity["concept:name"],
-                            "loop-location": "none",
-                            "frequency": sublogs[subtree_candidate.node_id][i].attributes['frequency']
-                        }
+                if len(sublogs[subtree_candidate.node_id][i]) > 0:
+                    # for activity in sublogs[subtree_candidate.node_id][i]:
+                    for j in range(len(sublogs[subtree_candidate.node_id][i])):
+                        success = False
+                        while not success:
+                            success = True
+                            activity = sublogs[subtree_candidate.node_id][i][j]
+                            loop_activity = {
+                                "name": activity["concept:name"],
+                                "loop-location": "none",
+                                "frequency": sublogs[subtree_candidate.node_id][i].attributes['frequency']
+                            }
 
-                        if (
-                            subtree_candidate.reference.children[0].operator is None
-                            and (
-                            activity["concept:name"]
-                            == subtree_candidate.reference.children[0].label
-                        )
-                            and loop_location == "do"
-                        ):
-                            loop_activity["loop-location"] = loop_location
-                            loop_location = "redo"
-
-                        elif (
-                            subtree_candidate.reference.children[1].operator is None
-                            and (
+                            if (
+                                subtree_candidate.reference.children[0].operator is None
+                                and (
                                 activity["concept:name"]
-                                == subtree_candidate.reference.children[1].label
+                                == subtree_candidate.reference.children[0].label
                             )
-                            and loop_location == "redo"
-                        ):
-                            loop_activity["loop-location"] = loop_location
-                            loop_location = "do"
+                                and loop_location == "do"
+                            ):
+                                loop_activity["loop-location"] = loop_location
+                                loop_location = "redo"
 
-                        # check if activity is in the left subtree
-                        elif loop_location == "do":
-                            found_in_do = False
-                            is_tau = False
+                            elif (
+                                subtree_candidate.reference.children[1].operator is None
+                                and (
+                                    activity["concept:name"]
+                                    == subtree_candidate.reference.children[1].label
+                                )
+                                and loop_location == "redo"
+                            ):
+                                loop_activity["loop-location"] = loop_location
+                                loop_location = "do"
 
-                            if subtree_candidate.reference.children[0].id in sublogs:
-                                for k in range(
-                                    index_k_do,
-                                    len(
-                                        sublogs[
-                                            subtree_candidate.reference.children[0].id
-                                        ]
-                                    ),
-                                ):
-                                    match = False
+                            # check if activity is in the left subtree
+                            elif loop_location == "do":
+                                found_in_do = False
+                                is_tau = False
 
-                                    if (
-                                        len(
-                                            sublogs[
-                                                subtree_candidate.reference.children[
-                                                    0
-                                                ].id
-                                            ][k]
-                                        )
-                                        > 0
+                                if subtree_candidate.reference.children[0].id in sublogs:
+                                    for k in range(
+                                        index_k_do,
+                                        len(sublogs[subtree_candidate.reference.children[0].id]),
                                     ):
-                                        for l in range(
-                                            index_l_do,
-                                            len(
+                                        match = False
+
+                                        if (len( sublogs[ subtree_candidate.reference.children[0].id][k]) > 0):
+                                            for l in range(index_l_do,len(sublogs[subtree_candidate.reference.children[0].id][k])):
+                                                if (
+                                                    sublogs[
+                                                        subtree_candidate.reference.children[
+                                                            0
+                                                        ].id
+                                                    ][k][l]["concept:name"]
+                                                    == activity["concept:name"]
+                                                ):
+                                                    match = True
+                                                    index_l_do = l + 1
+                                                    break
+                                        else:
+                                            is_tau = True
+                                            break
+
+                                        if match:
+                                            found_in_do = True
+                                            loop_activity["loop-location"] = loop_location
+                                            index_k_do = k
+
+                                            if index_l_do == len(
                                                 sublogs[
                                                     subtree_candidate.reference.children[
                                                         0
                                                     ].id
                                                 ][k]
-                                            ),
-                                        ):
-                                            if (
-                                                sublogs[
-                                                    subtree_candidate.reference.children[
-                                                        0
-                                                    ].id
-                                                ][k][l]["concept:name"]
-                                                == activity["concept:name"]
                                             ):
-                                                match = True
-                                                index_l_do = l + 1
-                                                break
-                                    else:
-                                        is_tau = True
-                                        break
+                                                index_k_do = k + 1
+                                                index_l_do = 0
+                                                loop_location = "redo"
+                                                if index_k_do == len(
+                                                    sublogs[
+                                                        subtree_candidate.reference.children[
+                                                            0
+                                                        ].id
+                                                    ]
+                                                ):
+                                                    index_k_do = 0
+                                            break
+                                else:
+                                    is_tau = True
 
-                                    if match:
-                                        found_in_do = True
-                                        loop_activity["loop-location"] = loop_location
-                                        index_k_do = k
+                                if is_tau:
+                                    loop_activity["name"] = "tau"
+                                    loop_activity["loop-location"] = loop_location
+                                    loop_activity["frequency"] = sublogs[subtree_candidate.node_id][i].attributes[
+                                        'frequency']
+                                    loop_activities[i].append(loop_activity)
+                                    loop_location = "redo"
+                                    found_in_do = True
+                                    success = False
+                                    index_k_do = index_k_do + 1
 
-                                        if index_l_do == len(
-                                            sublogs[
-                                                subtree_candidate.reference.children[
-                                                    0
-                                                ].id
-                                            ][k]
-                                        ):
-                                            index_k_do = k + 1
-                                            index_l_do = 0
-                                            loop_location = "redo"
-                                            if index_k_do == len(
-                                                sublogs[
-                                                    subtree_candidate.reference.children[
-                                                        0
-                                                    ].id
-                                                ]
-                                            ):
-                                                index_k_do = 0
-                                        break
-                            else:
-                                is_tau = True
+                                if not found_in_do:
+                                    loop_location = "redo"
+                                    success = False
+                                    continue
 
-                            if is_tau:
-                                loop_activity["name"] = "tau"
-                                loop_activity["loop-location"] = loop_location
-                                loop_activity["frequency"] = sublogs[subtree_candidate.node_id][i].attributes[
-                                    'frequency']
-                                loop_activities[i].append(loop_activity)
-                                loop_location = "redo"
-                                found_in_do = True
-                                success = False
-                                index_k_do = index_k_do + 1
+                            # check if activity is in the right subtree
+                            elif loop_location == "redo":
+                                found_in_redo = False
+                                is_tau = False
 
-                            if not found_in_do:
-                                loop_location = "redo"
-                                success = False
-                                continue
-
-                        # check if activity is in the right subtree
-                        elif loop_location == "redo":
-                            found_in_redo = False
-                            is_tau = False
-
-                            if subtree_candidate.reference.children[1].id in sublogs:
-                                for k in range(
-                                    index_k_redo,
-                                    len(
-                                        sublogs[
-                                            subtree_candidate.reference.children[1].id
-                                        ]
-                                    ),
-                                ):
-                                    match = False
-
-                                    if (
+                                if subtree_candidate.reference.children[1].id in sublogs:
+                                    for k in range(
+                                        index_k_redo,
                                         len(
                                             sublogs[
-                                                subtree_candidate.reference.children[
-                                                    1
-                                                ].id
-                                            ][k]
-                                        )
-                                        > 0
+                                                subtree_candidate.reference.children[1].id
+                                            ]
+                                        ),
                                     ):
-                                        for l in range(
-                                            index_l_redo,
+                                        match = False
+
+                                        if (
                                             len(
                                                 sublogs[
                                                     subtree_candidate.reference.children[
                                                         1
                                                     ].id
                                                 ][k]
-                                            ),
+                                            )
+                                            > 0
                                         ):
-                                            if (
+                                            for l in range(
+                                                index_l_redo,
+                                                len(
+                                                    sublogs[
+                                                        subtree_candidate.reference.children[
+                                                            1
+                                                        ].id
+                                                    ][k]
+                                                ),
+                                            ):
+                                                if (
+                                                    sublogs[
+                                                        subtree_candidate.reference.children[
+                                                            1
+                                                        ].id
+                                                    ][k][l]["concept:name"]
+                                                    == activity["concept:name"]
+                                                ):
+                                                    match = True
+                                                    index_l_redo = l + 1
+                                                    break
+                                        else:
+                                            is_tau = True
+                                            break
+
+                                        if match:
+                                            found_in_redo = True
+                                            loop_activity["loop-location"] = loop_location
+                                            index_k_redo = k
+
+                                            if index_l_redo == len(
                                                 sublogs[
                                                     subtree_candidate.reference.children[
                                                         1
                                                     ].id
-                                                ][k][l]["concept:name"]
-                                                == activity["concept:name"]
+                                                ][k]
                                             ):
-                                                match = True
-                                                index_l_redo = l + 1
-                                                break
-                                    else:
-                                        is_tau = True
-                                        break
+                                                index_k_redo = k + 1
+                                                index_l_redo = 0
+                                                loop_location = "do"
+                                                if index_k_redo == len(
+                                                    sublogs[
+                                                        subtree_candidate.reference.children[
+                                                            1
+                                                        ].id
+                                                    ]
+                                                ):
+                                                    index_k_redo = 0
+                                            break
+                                else:
+                                    is_tau = True
 
-                                    if match:
-                                        found_in_redo = True
-                                        loop_activity["loop-location"] = loop_location
-                                        index_k_redo = k
+                                if is_tau:
+                                    loop_activity["name"] = "tau"
+                                    loop_activity["loop-location"] = loop_location
+                                    loop_activity["frequency"] = sublogs[subtree_candidate.node_id][i].attributes[
+                                        'frequency']
+                                    loop_activities[i].append(loop_activity)
+                                    loop_location = "do"
+                                    found_in_redo = True
+                                    success = False
+                                    index_k_redo = index_k_redo + 1
 
-                                        if index_l_redo == len(
-                                            sublogs[
-                                                subtree_candidate.reference.children[
-                                                    1
-                                                ].id
-                                            ][k]
-                                        ):
-                                            index_k_redo = k + 1
-                                            index_l_redo = 0
-                                            loop_location = "do"
-                                            if index_k_redo == len(
-                                                sublogs[
-                                                    subtree_candidate.reference.children[
-                                                        1
-                                                    ].id
-                                                ]
-                                            ):
-                                                index_k_redo = 0
-                                        break
-                            else:
-                                is_tau = True
+                                if not found_in_redo:
+                                    loop_location = "do"
+                                    success = False
+                                    continue
 
-                            if is_tau:
-                                loop_activity["name"] = "tau"
-                                loop_activity["loop-location"] = loop_location
-                                loop_activity["frequency"] = sublogs[subtree_candidate.node_id][i].attributes[
-                                    'frequency']
-                                loop_activities[i].append(loop_activity)
-                                loop_location = "do"
-                                found_in_redo = True
-                                success = False
-                                index_k_redo = index_k_redo + 1
+                        loop_activities[i].append(loop_activity)
+                        if j == len(sublogs[subtree_candidate.node_id][i]) - 1:
+                            # cater for last missed do with tau, sublog of the loop(parent) doesn't contain evidence of the
+                            # last tau and the for loop(j) terminates before the case can be handled
+                            if loop_activities[i][-1]["loop-location"] == "redo":
+                                loop_activities[i].append(
+                                    {"name": "tau", "loop-location": "do",
+                                     "frequency": sublogs[subtree_candidate.node_id][i].attributes['frequency']}
+                                )
+                                index_k_do += 1
 
-                            if not found_in_redo:
-                                loop_location = "do"
-                                success = False
-                                continue
+                else:
+                    loop_activities[i].append({"name": "tau", "loop-location": "do",
+                                               "frequency": sublogs[subtree_candidate.node_id][i].attributes['frequency']})
+                    index_k_do += 1
 
-                    loop_activities[i].append(loop_activity)
-                    if j == len(sublogs[subtree_candidate.node_id][i]) - 1:
-                        # cater for last missed do with tau, sublog of the loop(parent) doesn't contain evidence of the
-                        # last tau and the for loop(j) terminates before the case can be handled
-                        if loop_activities[i][-1]["loop-location"] == "redo":
-                            loop_activities[i].append(
-                                {"name": "tau", "loop-location": "do",
-                                 "frequency": sublogs[subtree_candidate.node_id][i].attributes['frequency']}
-                            )
-                            index_k_do += 1
-
-            else:
-                loop_activities[i].append({"name": "tau", "loop-location": "do",
-                                           "frequency": sublogs[subtree_candidate.node_id][i].attributes['frequency']})
-                index_k_do += 1
+        except Exception as e:
+            print("Error in annotate_loop_activities_with_do_or_redo: " + str(e))
 
         return loop_activities
 

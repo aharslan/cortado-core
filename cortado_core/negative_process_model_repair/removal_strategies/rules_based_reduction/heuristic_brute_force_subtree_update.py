@@ -6,6 +6,8 @@ from cortado_core.negative_process_model_repair.removal_strategies.candidate_ide
     CandidateSubtree
 from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.removal_candidates_heuristics import \
     RemovalCandidatesHeuristics
+from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.complete_brute_force_subtree_update import \
+    CompleteBruteForceSubtreeUpdate
 from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.subtree_update import \
     SubtreeUpdate, get_subsequent_subtree_execution_sequences_excluding_repetitions
 from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.update_rule import \
@@ -13,7 +15,7 @@ from cortado_core.negative_process_model_repair.removal_strategies.rules_based_r
 from cortado_core.negative_process_model_repair.constants import Constants
 
 
-class HeuristicBruteForceSubtreeUpdate(SubtreeUpdate):
+class HeuristicBruteForceSubtreeUpdate(CompleteBruteForceSubtreeUpdate):
 
     def __init__(
         self,
@@ -237,7 +239,7 @@ class HeuristicBruteForceSubtreeUpdate(SubtreeUpdate):
                         parallel_update_rule.apply_post_sequeltialization_rule(copy.deepcopy(tree_to_update),
                                                                                post_sequences_negative_pruned[key][
                                                                                    'sequence']),
-                        emoval_candidate_subtree,
+                        removal_candidate_subtree,
                         'parallel: post sequentialization ' + str(post_sequences_negative_pruned[key]['sequence'])
                     )
                     parallel_rules_results.append(result)

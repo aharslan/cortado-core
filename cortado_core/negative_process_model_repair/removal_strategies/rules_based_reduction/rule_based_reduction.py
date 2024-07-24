@@ -8,6 +8,8 @@ from cortado_core.negative_process_model_repair.removal_strategies.candidate_ide
     CandidateSubtree
 from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.removal_candidates_generator import \
     RemovalCandidatesGenerator
+from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.removal_candidates_heuristics import \
+    RemovalCandidatesHeuristics
 from cortado_core.negative_process_model_repair.removal_strategies.fallback_strategy import (
     remove_activity_from_tree_by_id,
 )
@@ -20,13 +22,13 @@ from cortado_core.negative_process_model_repair.temp_utils import (
 
 
 class RuleBasedReduction:
-    removal_candidates_generator: RemovalCandidatesGenerator
+    removal_candidates_generator: RemovalCandidatesHeuristics
     removal_candidate_activities: list[CandidateActivity]
     removal_candidate_subtrees: list[CandidateSubtree]
 
     def __init__(
         self,
-        removal_candidates_generator: RemovalCandidatesGenerator,
+        removal_candidates_generator: RemovalCandidatesHeuristics,
         removal_candidate_activities: list[CandidateActivity],
     ):
         self.removal_candidates_generator = removal_candidates_generator
@@ -162,25 +164,25 @@ def handle_loop_operator(
 ):
     if (
         removal_candidate_subtree.loop_subtree_stats.min_pm_approach
-        == "remove-redundant-redo"
+        == "remove_redundant_redo"
     ):
         remove_redundant_redo(removal_candidate_subtree, tree_to_update)
 
     elif (
         removal_candidate_subtree.loop_subtree_stats.min_pm_approach
-        == "optional-redo-mandatory"
+        == "optional_redo_mandatory"
     ):
         optional_redo_mandatory(removal_candidate_subtree, tree_to_update)
 
     elif (
         removal_candidate_subtree.loop_subtree_stats.min_pm_approach
-        == "repeat-exactly-n"
+        == "repeat_exactly_n"
     ):
         repeat_exactly_n(removal_candidate_subtree, tree_to_update)
 
     elif (
         removal_candidate_subtree.loop_subtree_stats.min_pm_approach
-        == "repeat_atleast_n_pm"
+        == "repeat_at_least_n"
     ):
         repeat_atleast_n(removal_candidate_subtree, tree_to_update)
 

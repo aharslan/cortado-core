@@ -33,6 +33,9 @@ class SequenceUpdateRule(UpdateRule):
         tree_node_to_update_reference = find_tree_node_by_id(
             self.removal_candidate_subtree.node_id, tree_to_update
         )
+        assert tree_node_to_update_reference.id is not None
+        assert tree_node_to_update_reference.id != 0 # not the root node
+
         remove_subtree_from_parents_children(tree_node_to_update_reference)
 
         return tree_to_update

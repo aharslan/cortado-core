@@ -176,14 +176,16 @@ class CompleteBruteForceSubtreeUpdate(SubtreeUpdate):
         max_length_loop_repetition_encoding: int
     ) -> list[list[int]]:
         repetitions = list(range(1, max_length_loop_repetition_encoding + 1))
+        repetitions_pruned_offset = 0
         if do_frequency_remove in repetitions:
             repetitions.remove(do_frequency_remove)
+            repetitions_pruned_offset = 1
         combinations = []
 
         if len(repetitions) > 2:
 
             max_num = max(max_number_of_loop_repetition_encodings, len(repetitions))
-            for i in range(1, max_num + 1):
+            for i in range(1, max_num + repetitions_pruned_offset):
                 if len(combinations) == 0:
                     combinations = (
                         [list(t) for t in list(itertools.combinations(repetitions, i))]

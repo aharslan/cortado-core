@@ -1,0 +1,545 @@
+import copy
+from pm4py.objects.process_tree.obj import Operator, ProcessTree
+from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.candidate_activity import \
+    CandidateActivity
+from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.candidate_subtree import \
+    CandidateSubtree
+from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.removal_candidates_heuristics import \
+    RemovalCandidatesHeuristics
+from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.heuristic_brute_force_subtree_update import \
+    HeuristicBruteForceSubtreeUpdate
+from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.subtree_update import \
+    SubtreeUpdate, get_subsequent_subtree_execution_sequences_excluding_repetitions
+from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.update_rule import \
+    LoopUpdateRule, ParallelUpdateRule
+from cortado_core.negative_process_model_repair.constants import Constants
+from cortado_core.negative_process_model_repair.temp_utils import find_tree_node_by_id
+
+class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
+
+    def __init__(
+        self,
+        removal_candidates_generator: RemovalCandidatesHeuristics,
+        removal_candidate_activities: list[CandidateActivity],
+    ):
+        super().__init__(removal_candidates_generator, removal_candidate_activities)
+
+    def apply_rating_based_subtree_update_reduction(self) -> (
+        ProcessTree, bool, bool, float, float, str):
+        brute_force_results = []
+
+        for removal_candidate_subtree in self.removal_candidate_subtrees:
+            tree_to_update = copy.deepcopy(self.removal_candidates_generator.process_tree)
+            result = None
+
+            if removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
+                removal_candidate_subtree.rating = self.rate_sequence_sub_tree(removal_candidate_subtree)
+
+            elif removal_candidate_subtree.reference.operator == Operator.XOR:
+                removal_candidate_subtree.rating = self.rate_choice_sub_tree(removal_candidate_subtree)
+
+            elif removal_candidate_subtree.reference.operator == Operator.LOOP:
+                removal_candidate_subtree.rating, removal_candidate_subtree.rating_approach = (
+                    self.rate_loop_sub_tree(removal_candidate_subtree))
+            elif (
+                removal_candidate_subtree.reference.operator == Operator.PARALLEL
+            ):
+                (removal_candidate_subtree.rating,
+                 removal_candidate_subtree.rating_approach,
+                 removal_candidate_subtree.sequence_in_parallel,
+                 removal_candidate_subtree.execution_sequence_of_child_subtrees_negative) = (
+                    self.rate_parallel_sub_tree(removal_candidate_subtree))
+
+        removal_candidate_subtrees = sorted(self.removal_candidate_subtrees, key=lambda x: x.rating)
+
+        successful_results = []
+        failed_updates = []
+        for removal_candidate_subtree in removal_candidate_subtrees:
+
+            if removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
+                result = self.handle_sequence_operator(
+                    removal_candidate_subtree, copy.deepcopy(tree_to_update)
+                )
+            elif removal_candidate_subtree.reference.operator == Operator.XOR:
+                result = self.handle_choice_operator(
+                    removal_candidate_subtree, copy.deepcopy(tree_to_update)
+                )
+            elif removal_candidate_subtree.reference.operator == Operator.LOOP:
+                result = self.handle_loop_operator(
+                    removal_candidate_subtree, copy.deepcopy(tree_to_update)
+                )
+            elif removal_candidate_subtree.reference.operator == Operator.PARALLEL:
+                result = self.handle_parallel_operator(
+                    removal_candidate_subtree, copy.deepcopy(tree_to_update)
+                )
+
+            if result is not None and result['negative_trace_fits'] == False:
+                if isinstance(result, list):
+                    successful_results.extend(result)
+                else:
+                    successful_results.append(result)
+            else:
+                if isinstance(result, list):
+                    failed_updates.extend({'candidate_sub_tree': removal_candidate_subtree, 'result': result})
+                else:
+                    failed_updates.append({'candidate_sub_tree': removal_candidate_subtree, 'result': result})
+
+            if (Constants.STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD == True and
+                len(successful_results) > 0 and
+                successful_results[len(successful_results) - 1]['thresholds_met'] == True and
+                successful_results[len(successful_results) - 1]['negative_trace_fits'] == False):
+                break
+
+        successful_results = sorted(successful_results,
+                                                key=lambda x: (
+                                                    -x["percentage_positive_traces_conforming"],
+                                                    x["resulting_tree_edit_distance"])
+                                                )
+        if len(successful_results) > 0:
+            return (
+                successful_results[0]['updated_tree'],
+                True,
+                successful_results[0]['thresholds_met'],
+                successful_results[0]['percentage_positive_traces_conforming'],
+                successful_results[0]['resulting_tree_edit_distance'],
+                successful_results[0]['applied_rule'],
+                failed_updates)
+        else:
+            return (None, False, False, None, None, None, [])
+
+
+    def rate_sequence_sub_tree(self, removal_candidate_subtree: CandidateSubtree):
+        # count total number of positive traces executing this subtree
+        positive_trace_count = 0
+
+        if removal_candidate_subtree.reference.id in self.removal_candidates_generator.keep_sublogs:
+            for item in self.removal_candidates_generator.keep_sublogs[removal_candidate_subtree.reference.id]:
+                positive_trace_count += item.attributes['frequency']
+
+        rating = positive_trace_count / self.removal_candidates_generator.positive_traces_frequency
+
+        return rating
+
+    def rate_choice_sub_tree(self, removal_candidate_subtree: CandidateSubtree):
+        # count total number of positive traces executing this subtree
+        positive_trace_count = 0
+
+        if len(removal_candidate_subtree.candidate_subtrees) > 0:
+            reference = removal_candidate_subtree.candidate_subtrees[0]
+            while True:
+                if len(reference.candidate_activities) > 0:
+                    positive_trace_count = reference.candidate_activities[0].frequency_in_positive_traces
+                    break
+                else:
+                    reference = reference.candidate_subtrees[0]
+
+        elif len(removal_candidate_subtree.candidate_activities) > 0:
+            positive_trace_count = removal_candidate_subtree.candidate_activities[0].frequency_in_positive_traces
+
+        rating = positive_trace_count / self.removal_candidates_generator.positive_traces_frequency
+
+        return rating
+
+    def rate_loop_sub_tree(self, removal_candidate_subtree: CandidateSubtree):
+        try:
+            removal_candidate_subtree.loop_subtree_stats = (
+                self.removal_candidates_generator.calculate_trace_frequencies_based_heuristics_for_loop_operator(
+                    removal_candidate_subtree))
+        except Exception as e:
+            print(e)
+
+        return (removal_candidate_subtree.loop_subtree_stats.min_pm,
+                removal_candidate_subtree.loop_subtree_stats.min_pm_approach)
+
+    def rate_parallel_sub_tree(self, removal_candidate_subtree: CandidateSubtree):
+
+        maximum_positive_traces_in_a_sequence = -1
+        sequence_approach_with_maximum_traces = None
+        sequence = None
+
+        (subsequent_sequences_excluding_repetitions_positive,
+         execution_sequence_of_child_subtrees_positive,
+         trace_frequencies_corresponding_to_sequences_positive) = (
+            get_subsequent_subtree_execution_sequences_excluding_repetitions(
+                self.removal_candidates_generator.keep_sublogs,
+                removal_candidate_subtree
+            ))
+
+        (pre_sequences_negative, mid_sequences_negative, post_sequences_negative,
+         dynamic_sequences_negative, execution_sequence_of_child_subtrees_negative) = (
+            self.get_all_possible_sequentializations_for_parallel_operator_using_neg_variant(
+                removal_candidate_subtree))
+
+        dynamic_sequences_negative_pruned = prune_dynamic_sequences_negative(
+            subsequent_sequences_excluding_repetitions_positive,
+            trace_frequencies_corresponding_to_sequences_positive,
+            dynamic_sequences_negative
+        )
+
+        dynamic_sequences_negative_pruned = {k: v for k, v in
+                                             sorted(dynamic_sequences_negative_pruned.items(),
+                                                    key=lambda item: item[1]['trace_frequency'])}
+
+        if (len(dynamic_sequences_negative_pruned) > 0
+            and dynamic_sequences_negative_pruned[list(dynamic_sequences_negative_pruned.keys())[0]][
+                'trace_frequency'] > maximum_positive_traces_in_a_sequence):
+            maximum_positive_traces_in_a_sequence = \
+            dynamic_sequences_negative_pruned[list(dynamic_sequences_negative_pruned.keys())[0]]['trace_frequency']
+            sequence_approach_with_maximum_traces = 'dynamic_sequence'
+            sequence = dynamic_sequences_negative_pruned[list(dynamic_sequences_negative_pruned.keys())[0]]['sequence']
+
+        pre_sequences_negative_pruned = prune_pre_sequences_negative(
+            subsequent_sequences_excluding_repetitions_positive,
+            trace_frequencies_corresponding_to_sequences_positive,
+            pre_sequences_negative
+        )
+
+        pre_sequences_negative_pruned = {k: v for k, v in
+                                         sorted(pre_sequences_negative_pruned.items(),
+                                                key=lambda item: item[1]['trace_frequency'])}
+
+        if (len(pre_sequences_negative_pruned) > 0
+            and pre_sequences_negative_pruned[list(pre_sequences_negative_pruned.keys())[0]][
+                'trace_frequency'] > maximum_positive_traces_in_a_sequence):
+            maximum_positive_traces_in_a_sequence = \
+            pre_sequences_negative_pruned[list(pre_sequences_negative_pruned.keys())[0]]['trace_frequency']
+            sequence_approach_with_maximum_traces = 'pre_sequence'
+            sequence = pre_sequences_negative_pruned[list(pre_sequences_negative_pruned.keys())[0]]['sequence']
+
+        post_sequences_negative_pruned = prune_post_sequences_negative(
+            subsequent_sequences_excluding_repetitions_positive,
+            trace_frequencies_corresponding_to_sequences_positive,
+            post_sequences_negative
+        )
+
+        post_sequences_negative_pruned = {k: v for k, v in
+                                          sorted(post_sequences_negative_pruned.items(),
+                                                 key=lambda item: item[1]['trace_frequency'])}
+
+        if (len(post_sequences_negative_pruned) > 0
+            and post_sequences_negative_pruned[list(post_sequences_negative_pruned.keys())[0]][
+                'trace_frequency'] > maximum_positive_traces_in_a_sequence):
+            maximum_positive_traces_in_a_sequence = \
+                post_sequences_negative_pruned[list(post_sequences_negative_pruned.keys())[0]]['trace_frequency']
+            sequence_approach_with_maximum_traces = 'post_sequence'
+            sequence = post_sequences_negative_pruned[list(post_sequences_negative_pruned.keys())[0]]['sequence']
+
+        mid_sequences_negative_pruned = prune_mid_sequences_negative(
+            subsequent_sequences_excluding_repetitions_positive,
+            trace_frequencies_corresponding_to_sequences_positive,
+            mid_sequences_negative
+        )
+
+        mid_sequences_negative_pruned = {k: v for k, v in
+                                         sorted(mid_sequences_negative_pruned.items(),
+                                                key=lambda item: item[1]['trace_frequency'])}
+
+        if (len(mid_sequences_negative_pruned) > 0
+            and mid_sequences_negative_pruned[list(mid_sequences_negative_pruned.keys())[0]][
+                'trace_frequency'] > maximum_positive_traces_in_a_sequence):
+            maximum_positive_traces_in_a_sequence = \
+                mid_sequences_negative_pruned[list(mid_sequences_negative_pruned.keys())[0]]['trace_frequency']
+            sequence_approach_with_maximum_traces = 'mid_sequence'
+            sequence = mid_sequences_negative_pruned[list(mid_sequences_negative_pruned.keys())[0]]['sequence']
+
+        rating = 1
+        if maximum_positive_traces_in_a_sequence != -1:
+            rating = 1 - (
+                    maximum_positive_traces_in_a_sequence / self.removal_candidates_generator.positive_traces_frequency)
+        return rating, sequence_approach_with_maximum_traces, sequence, execution_sequence_of_child_subtrees_negative
+
+    def handle_loop_operator(
+        self, removal_candidate_subtree: CandidateSubtree, tree_to_update: ProcessTree
+    ):
+        loop_rule_result = None
+        loop_update_rule = LoopUpdateRule(removal_candidate_subtree)
+
+        do_frequency_remove, redo_frequency_remove = (
+            self.removal_candidates_generator.get_do_and_redo_frequencies_negative_variant(removal_candidate_subtree))
+
+        if removal_candidate_subtree.rating_approach == 'remove_redundant_redo':
+            try:
+                loop_rule_result = self.calculate_candidate_tree_statistics(
+                    loop_update_rule.apply_remove_redundant_redo(copy.deepcopy(tree_to_update)),
+                    removal_candidate_subtree,
+                    'loop: remove-redundant-redo'
+                )
+
+            except Exception as e:
+                print("Rule application failed (loop: remove-redundant-redo): ", e)
+
+        elif removal_candidate_subtree.rating_approach == 'optional_redo_mandatory':
+            try:
+                loop_rule_result = self.calculate_candidate_tree_statistics(
+                    loop_update_rule.apply_optional_redo_mandatory(copy.deepcopy(tree_to_update)),
+                    removal_candidate_subtree,
+                    'loop: optional_redo_mandatory'
+                )
+
+            except Exception as e:
+                print("Rule application failed (loop: optional_redo_mandatory): ", e)
+
+        elif removal_candidate_subtree.rating_approach == 'repeat_exactly_n':
+            try:
+                repetitions_to_encode: list[int] = list(
+                    removal_candidate_subtree.loop_subtree_stats.count_positive_variants_highest_loop_repetitions.keys()
+                )
+
+                loop_rule_result = self.calculate_candidate_tree_statistics(
+                    loop_update_rule.apply_repeat_exactly_n(copy.deepcopy(tree_to_update), repetitions_to_encode),
+                    removal_candidate_subtree,
+                    'loop: repeat_exactly_n'
+                )
+
+            except Exception as e:
+                print("Rule application failed (loop: repeat_exactly_n): ", e)
+
+        elif removal_candidate_subtree.rating_approach == 'repeat_at_least_n':
+            try:
+                loop_rule_result = self.calculate_candidate_tree_statistics(
+                    loop_update_rule.apply_repeat_at_least_n(copy.deepcopy(tree_to_update),
+                                                             removal_candidate_subtree.loop_subtree_stats.do_frequency_remove),
+                    removal_candidate_subtree,
+                    'loop: repeat_at_least_n'
+                )
+
+            except Exception as e:
+                print("Rule application failed (loop: repeat_at_least_n): ", e)
+
+        return loop_rule_result
+
+    def handle_parallel_operator(
+        self, removal_candidate_subtree: CandidateSubtree, tree_to_update: ProcessTree
+    ) -> ProcessTree:
+        parallel_rules_result = None
+        parallel_update_rule = ParallelUpdateRule(removal_candidate_subtree)
+
+        if removal_candidate_subtree.rating_approach == 'pre_sequence':
+            try:
+                parallel_rules_result = self.calculate_candidate_tree_statistics(
+                    parallel_update_rule.apply_pre_sequeltialization_rule(copy.deepcopy(tree_to_update),
+                                                                          removal_candidate_subtree.sequence_in_parallel),
+                    removal_candidate_subtree,
+                    'parallel: pre sequentialization ' + str(removal_candidate_subtree.sequence_in_parallel)
+                )
+
+            except Exception as e:
+                print("Rule application failed (parallel: pre sequentialization): ", e)
+
+        elif removal_candidate_subtree.rating_approach == 'post_sequence':
+            try:
+                parallel_rules_result = self.calculate_candidate_tree_statistics(
+                    parallel_update_rule.apply_post_sequeltialization_rule(copy.deepcopy(tree_to_update),
+                                                                           removal_candidate_subtree.sequence_in_parallel),
+                    removal_candidate_subtree,
+                    'parallel: post sequentialization ' + str(removal_candidate_subtree.sequence_in_parallel)
+                )
+
+            except Exception as e:
+                print("Rule application failed (parallel: post sequentialization): ", e)
+
+        elif removal_candidate_subtree.rating_approach == 'mid_sequence':
+            try:
+                parallel_rules_result = self.calculate_candidate_tree_statistics(
+                    parallel_update_rule.apply_mid_sequeltialization_rule(copy.deepcopy(tree_to_update),
+                                                                          removal_candidate_subtree.sequence_in_parallel,
+                                                                          removal_candidate_subtree.execution_sequence_of_child_subtrees_negative),
+                    removal_candidate_subtree,
+                    'parallel: mid sequentialization ' + str(removal_candidate_subtree.sequence_in_parallel)
+                )
+
+            except Exception as e:
+                print("Rule application failed (parallel: mid sequentialization): ", e)
+
+        elif removal_candidate_subtree.rating_approach == 'dynamic_sequence':
+            try:
+                parallel_rules_result = self.calculate_candidate_tree_statistics(
+                    parallel_update_rule.apply_dynamic_sequeltialization_rule(copy.deepcopy(tree_to_update),
+                                                                              removal_candidate_subtree.sequence_in_parallel),
+                    removal_candidate_subtree,
+                    'parallel: dynamic sequentialization ' + str(removal_candidate_subtree.sequence_in_parallel)
+                )
+
+            except Exception as e:
+                print("Rule application failed (parallel: dynamic sequentialization): ", e)
+
+        return parallel_rules_result
+
+
+def prune_dynamic_sequences_negative(subsequent_sequences_excluding_repetitions_positive: list[list[int]],
+                                     trace_frequencies_corresponding_to_sequences_positive: list[int],
+                                     dynamic_sequences_negative: list[list[int]]) -> dict:
+    dynamic_sequences_negative_pruned = {}
+    for dynamic_sequence in dynamic_sequences_negative:
+        for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
+            for j in range(len(subsequent_sequences_excluding_repetitions_positive[i])):
+                if isinstance(subsequent_sequences_excluding_repetitions_positive[i][j], list):
+                    if is_subarr_in_same_sequence_in_arr(dynamic_sequence,
+                                                         subsequent_sequences_excluding_repetitions_positive[i][j]):
+                        if str(dynamic_sequence) in dynamic_sequences_negative_pruned:
+                            dynamic_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                                trace_frequencies_corresponding_to_sequences_positive[i])
+                            break
+                        else:
+                            dynamic_sequences_negative_pruned[str(dynamic_sequence)] = \
+                                {'sequence': dynamic_sequence,
+                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                            break
+                else:
+                    if is_subarr_in_same_sequence_in_arr(dynamic_sequence,
+                                                         subsequent_sequences_excluding_repetitions_positive[i]):
+                        if str(dynamic_sequence) in dynamic_sequences_negative_pruned:
+                            dynamic_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                                trace_frequencies_corresponding_to_sequences_positive[i])
+                            break
+                        else:
+                            dynamic_sequences_negative_pruned[str(dynamic_sequence)] = \
+                                {'sequence': dynamic_sequence,
+                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                            break
+
+    return dynamic_sequences_negative_pruned
+
+
+def prune_pre_sequences_negative(subsequent_sequences_excluding_repetitions_positive: list[list[int]],
+                                 trace_frequencies_corresponding_to_sequences_positive: list[int],
+                                 pre_sequences_negative: list[list[int]]) -> dict:
+    pre_sequences_negative_pruned = {}
+    for dynamic_sequence in pre_sequences_negative:
+        for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
+
+            if isinstance(subsequent_sequences_excluding_repetitions_positive[i][0], list):
+                if is_left_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i][0]):
+                    if str(dynamic_sequence) in pre_sequences_negative_pruned:
+                        pre_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                            trace_frequencies_corresponding_to_sequences_positive[i])
+                    else:
+                        pre_sequences_negative_pruned[str(dynamic_sequence)] = \
+                            {'sequence': dynamic_sequence,
+                             'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+            else:
+                if is_left_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i]):
+                    if str(dynamic_sequence) in pre_sequences_negative_pruned:
+                        pre_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                            trace_frequencies_corresponding_to_sequences_positive[i])
+                    else:
+                        pre_sequences_negative_pruned[str(dynamic_sequence)] = \
+                            {'sequence': dynamic_sequence,
+                             'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+
+    return pre_sequences_negative_pruned
+
+
+def prune_post_sequences_negative(subsequent_sequences_excluding_repetitions_positive: list[list[int]],
+                                  trace_frequencies_corresponding_to_sequences_positive: list[int],
+                                  post_sequences_negative: list[list[int]]) -> dict:
+    post_sequences_negative_pruned = {}
+    for dynamic_sequence in post_sequences_negative:
+        for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
+
+            if isinstance(subsequent_sequences_excluding_repetitions_positive[i][
+                              len(subsequent_sequences_excluding_repetitions_positive[i]) - 1], list):
+                if is_right_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i][
+                    len(subsequent_sequences_excluding_repetitions_positive[i]) - 1]):
+                    if str(dynamic_sequence) in post_sequences_negative_pruned:
+                        post_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                            trace_frequencies_corresponding_to_sequences_positive[i])
+                    else:
+                        post_sequences_negative_pruned[str(dynamic_sequence)] = \
+                            {'sequence': dynamic_sequence,
+                             'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+            else:
+                if is_right_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i]):
+                    if str(dynamic_sequence) in post_sequences_negative_pruned:
+                        post_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                            trace_frequencies_corresponding_to_sequences_positive[i])
+                    else:
+                        post_sequences_negative_pruned[str(dynamic_sequence)] = \
+                            {'sequence': dynamic_sequence,
+                             'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+
+    return post_sequences_negative_pruned
+
+
+def prune_mid_sequences_negative(subsequent_sequences_excluding_repetitions_positive: list[list[int]],
+                                 trace_frequencies_corresponding_to_sequences_positive: list[int],
+                                 mid_sequences_negative: list[list[int]]) -> dict:
+    mid_sequences_negative_pruned = {}
+    for mid_sequence in mid_sequences_negative:
+        for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
+            for j in range(len(subsequent_sequences_excluding_repetitions_positive[i])):
+                if isinstance(subsequent_sequences_excluding_repetitions_positive[i][j], list):
+                    if is_mid_sequence_in_execution_sequence(mid_sequence,
+                                                             subsequent_sequences_excluding_repetitions_positive[i][j]):
+                        if str(mid_sequence) in mid_sequences_negative_pruned:
+                            mid_sequences_negative_pruned[str(mid_sequence)]['trace_frequency'] += (
+                                trace_frequencies_corresponding_to_sequences_positive[i])
+                            break
+                        else:
+                            mid_sequences_negative_pruned[str(mid_sequence)] = \
+                                {'sequence': mid_sequence,
+                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                            break
+                else:
+                    if is_mid_sequence_in_execution_sequence(mid_sequence,
+                                                             subsequent_sequences_excluding_repetitions_positive[i]):
+                        if str(mid_sequence) in mid_sequences_negative_pruned:
+                            mid_sequences_negative_pruned[str(mid_sequence)]['trace_frequency'] += (
+                                trace_frequencies_corresponding_to_sequences_positive[i])
+                            break
+                        else:
+                            mid_sequences_negative_pruned[str(mid_sequence)] = \
+                                {'sequence': mid_sequence,
+                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                            break
+
+    return mid_sequences_negative_pruned
+
+
+def is_mid_sequence_in_execution_sequence(mid_sequence, execution_sequence):
+    if len(execution_sequence) >= (len(mid_sequence['left']) + len(mid_sequence['middle'])):
+        if (mid_sequence['middle'] ==
+            execution_sequence[len(mid_sequence['left']):len(mid_sequence['left']) + len(mid_sequence['middle'])]):
+            is_middle_equal = True
+            if (set(mid_sequence['left']) ==
+                set(execution_sequence[0:len(mid_sequence['left'])])):
+                return True
+    return False
+
+
+def is_subarr_in_same_sequence_in_arr(subarr, arr):
+    assert len(subarr) > 0
+    assert len(arr) > 0
+
+    if len(subarr) == len(arr) and subarr == arr:
+        return True
+
+    if len(subarr) < len(arr):
+        sequential_matches = 0
+        current_match = subarr[0]
+        for i in range(len(arr)):
+            if current_match == arr[i]:
+                sequential_matches += 1
+            if sequential_matches == len(subarr):
+                return True
+            current_match = subarr[sequential_matches]
+    return False
+
+
+def is_subarray(subarr, arr):
+    for i in range(len(arr)):
+        if arr[i:i + len(subarr)] == subarr:
+            return True
+    return False
+
+
+def is_left_subarray(subarr, arr):
+    if arr[0:0 + len(subarr)] == subarr:
+        return True
+    return False
+
+
+def is_right_subarray(subarr, arr):
+    if arr[-len(subarr):len(arr)] == subarr:
+        return True
+    return False

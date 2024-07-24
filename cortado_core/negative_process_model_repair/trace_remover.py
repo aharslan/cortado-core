@@ -11,6 +11,8 @@ from cortado_core.negative_process_model_repair.removal_strategies.rules_based_r
     CompleteBruteForceSubtreeUpdate
 from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.heuristic_brute_force_subtree_update import \
     HeuristicBruteForceSubtreeUpdate
+from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.rating_based_subtree_update import \
+    RatingBasedSubtreeUpdate
 from cortado_core.utils.trace import TypedTrace
 from pm4py import ProcessTree
 from cortado_core.negative_process_model_repair.removal_strategies.fallback_strategy import (
@@ -31,18 +33,74 @@ from pm4py.objects.process_tree.utils.generic import parse as pt_parse
 from cortado_core.negative_process_model_repair.PoolFactory import PoolFactory
 
 
-def apply_negative_process_model_repair(
+def apply_complete_brute_force_based_negative_process_model_repair(
     pt: ProcessTree,
     negative_variant: List[any],
     positive_variants: List[any],
 ):
-    """Apply neg proc model repair using heuristic based subtree pruning and case identification
-        with the fallback strategy that brute forces all possible update cases on all subtrees
-    """
     approach_used = None
     applied_rules = None
     percentage_positive_variants_conforming = -1
     resulting_tree_edit_distance = -1
+    update_operations = 0
+
+    if type(negative_variant[0]) is not TypedTrace:
+        negative_variant, negative_trace_frequency = get_traces_from_variants(negative_variant)
+    if type(positive_variants[0]) is not TypedTrace:
+        positive_variants, positive_traces_frequency = get_traces_from_variants(positive_variants)
+
+    set_preorder_ids_in_tree(pt)
+
+    removal_candidates_generator = RemovalCandidatesHeuristics(
+        pt, positive_variants, negative_variant[0], negative_trace_frequency, positive_traces_frequency
+    )
+
+    removal_candidates_generator.generate_sublogs_for_traces()
+    # removal_candidates_generator.generate_sublogs_for_traces(PoolFactory.instance().get_pool())
+
+    removal_candidate_activities = (
+        removal_candidates_generator.generate_removal_candidate_activities()
+    )
+
+    resulting_tree = copy.deepcopy(pt)
+
+    repair_strategy = CompleteBruteForceSubtreeUpdate(
+        removal_candidates_generator, removal_candidate_activities
+    )
+    (
+        resulting_tree_com_brute_force_subtree_update_based,
+        tree_updated_com_brute_force_subtree_update_based,
+        thresholds_met_heu_brute_force_subtree_update_based,
+        percentage_positive_traces_conforming_com_brute_force,
+        resulting_tree_edit_distance_com_brute_force,
+        applied_rules_com_brute_force
+    ) = repair_strategy.apply_complete_brute_force_subtree_update_based_reduction()
+
+    update_operations += repair_strategy.update_operations
+    if tree_updated_com_brute_force_subtree_update_based:
+        resulting_tree = resulting_tree_com_brute_force_subtree_update_based
+        approach_used = 'Complete Brute Force'
+        percentage_positive_variants_conforming = percentage_positive_traces_conforming_com_brute_force
+        resulting_tree_edit_distance = resulting_tree_edit_distance_com_brute_force
+        applied_rules = applied_rules_com_brute_force
+
+    else:
+        resulting_tree = pt
+
+    return (tree_updated_com_brute_force_subtree_update_based, resulting_tree, approach_used,
+            percentage_positive_variants_conforming, resulting_tree_edit_distance, applied_rules, [], update_operations)
+
+
+def apply_heuristic_brute_force_based_negative_process_model_repair(
+    pt: ProcessTree,
+    negative_variant: List[any],
+    positive_variants: List[any],
+):
+    approach_used = None
+    applied_rules = None
+    percentage_positive_variants_conforming = -1
+    resulting_tree_edit_distance = -1
+    update_operations = 0
 
     if type(negative_variant[0]) is not TypedTrace:
         negative_variant, negative_trace_frequency = get_traces_from_variants(negative_variant)
@@ -76,6 +134,7 @@ def apply_negative_process_model_repair(
         applied_rules_heu_brute_force
     ) = repair_strategy.apply_heuristic_brute_force_subtree_update_based_reduction()
 
+    update_operations += repair_strategy.update_operations
     if tree_updated_heu_brute_force_subtree_update_based:
         resulting_tree = resulting_tree_heu_brute_force_subtree_update_based
         approach_used = 'Heuristic Brute Force'
@@ -83,30 +142,189 @@ def apply_negative_process_model_repair(
         resulting_tree_edit_distance = resulting_tree_edit_distance_heu_brute_force
         applied_rules = applied_rules_heu_brute_force
 
-    if thresholds_met_heu_brute_force_subtree_update_based == False:
-        repair_strategy = CompleteBruteForceSubtreeUpdate(
+    else:
+        resulting_tree = pt
+
+    return (tree_updated_heu_brute_force_subtree_update_based, resulting_tree, approach_used,
+            percentage_positive_variants_conforming, resulting_tree_edit_distance, applied_rules, [], update_operations)
+
+
+def apply_sub_tree_rating_based_negative_process_model_repair(
+    pt: ProcessTree,
+    negative_variant: List[any],
+    positive_variants: List[any],
+):
+    approach_used = None
+    applied_rules = None
+    percentage_positive_variants_conforming = -1
+    resulting_tree_edit_distance = -1
+    update_operations = 0
+
+    if type(negative_variant[0]) is not TypedTrace:
+        negative_variant, negative_trace_frequency = get_traces_from_variants(negative_variant)
+    if type(positive_variants[0]) is not TypedTrace:
+        positive_variants, positive_traces_frequency = get_traces_from_variants(positive_variants)
+
+    set_preorder_ids_in_tree(pt)
+
+    removal_candidates_generator = RemovalCandidatesHeuristics(
+        pt, positive_variants, negative_variant[0], negative_trace_frequency, positive_traces_frequency
+    )
+
+    removal_candidates_generator.generate_sublogs_for_traces()
+    # removal_candidates_generator.generate_sublogs_for_traces(PoolFactory.instance().get_pool())
+
+    removal_candidate_activities = (
+        removal_candidates_generator.generate_removal_candidate_activities()
+    )
+
+    resulting_tree = copy.deepcopy(pt)
+
+    repair_strategy = RatingBasedSubtreeUpdate(
+        removal_candidates_generator, removal_candidate_activities
+    )
+    (
+        resulting_tree_rating_based_subtree_update,
+        tree_updated_rating_based_subtree_update,
+        thresholds_met_rating_based_subtree_update,
+        percentage_positive_traces_conforming_rating_based,
+        resulting_tree_edit_distance_rating_based,
+        applied_rules_rating_based,
+        failed_updates
+    ) = repair_strategy.apply_rating_based_subtree_update_reduction()
+
+    update_operations += repair_strategy.update_operations
+    if tree_updated_rating_based_subtree_update:
+        resulting_tree = resulting_tree_rating_based_subtree_update
+        approach_used = 'Sub-tree Rating Based Update'
+        percentage_positive_variants_conforming = percentage_positive_traces_conforming_rating_based
+        resulting_tree_edit_distance = resulting_tree_edit_distance_rating_based
+        applied_rules = applied_rules_rating_based
+
+    else:
+        resulting_tree = pt
+
+    return (tree_updated_rating_based_subtree_update, resulting_tree, approach_used,
+            percentage_positive_variants_conforming, resulting_tree_edit_distance, applied_rules, failed_updates,
+            update_operations)
+
+
+def apply_negative_process_model_repair(
+    pt: ProcessTree,
+    negative_variant: List[any],
+    positive_variants: List[any],
+):
+    """Apply neg proc model repair using heuristic based subtree pruning and case identification
+        with the fallback strategy that brute forces all possible update cases on all subtrees
+    """
+    assert len(positive_variants) > 0
+    assert len(negative_variant) > 0
+
+    approach_used = None
+    applied_rules = None
+    percentage_positive_variants_conforming = -1
+    resulting_tree_edit_distance = -1
+    failed_updates = []
+    tree_updated = False
+    update_operations = 0
+
+    if type(negative_variant[0]) is not TypedTrace:
+        negative_variant, negative_trace_frequency = get_traces_from_variants(negative_variant)
+    if type(positive_variants[0]) is not TypedTrace:
+        positive_variants, positive_traces_frequency = get_traces_from_variants(positive_variants)
+
+    set_preorder_ids_in_tree(pt)
+
+    removal_candidates_generator = RemovalCandidatesHeuristics(
+        pt, positive_variants, negative_variant[0], negative_trace_frequency, positive_traces_frequency
+    )
+
+    removal_candidates_generator.generate_sublogs_for_traces()
+    # removal_candidates_generator.generate_sublogs_for_traces(PoolFactory.instance().get_pool())
+
+    removal_candidate_activities = (
+        removal_candidates_generator.generate_removal_candidate_activities()
+    )
+
+    resulting_tree = copy.deepcopy(pt)
+
+    repair_strategy = RatingBasedSubtreeUpdate(
+        removal_candidates_generator, removal_candidate_activities
+    )
+    (
+        resulting_tree_rating_based_subtree_update,
+        tree_updated_rating_based_subtree_update,
+        thresholds_met_rating_based_subtree_update,
+        percentage_positive_traces_conforming_rating_based,
+        resulting_tree_edit_distance_rating_based,
+        applied_rules_rating_based,
+        failed_updates_rating_based
+    ) = repair_strategy.apply_rating_based_subtree_update_reduction()
+
+    update_operations += repair_strategy.update_operations
+    if tree_updated_rating_based_subtree_update:
+        resulting_tree = resulting_tree_rating_based_subtree_update
+        tree_updated = tree_updated_rating_based_subtree_update
+        approach_used = 'Rating Based Update'
+        percentage_positive_variants_conforming = percentage_positive_traces_conforming_rating_based
+        resulting_tree_edit_distance = resulting_tree_edit_distance_rating_based
+        applied_rules = applied_rules_rating_based
+        failed_updates = failed_updates_rating_based
+
+    if thresholds_met_rating_based_subtree_update == False:
+        repair_strategy = HeuristicBruteForceSubtreeUpdate(
             removal_candidates_generator, removal_candidate_activities
         )
         (
-            resulting_tree_com_brute_force_subtree_update_based,
-            tree_updated_com_brute_force_subtree_update_based,
+            resulting_tree_heu_brute_force_subtree_update_based,
+            tree_updated_heu_brute_force_subtree_update_based,
             thresholds_met_heu_brute_force_subtree_update_based,
-            percentage_positive_traces_conforming_com_brute_force,
-            resulting_tree_edit_distance_com_brute_force,
-            applied_rules_com_brute_force
-        ) = repair_strategy.apply_complete_brute_force_subtree_update_based_reduction()
+            percentage_positive_traces_conforming_heu_brute_force,
+            resulting_tree_edit_distance_heu_brute_force,
+            applied_rules_heu_brute_force
+        ) = repair_strategy.apply_heuristic_brute_force_subtree_update_based_reduction()
 
-        if tree_updated_com_brute_force_subtree_update_based:
-            resulting_tree = resulting_tree_com_brute_force_subtree_update_based
-            approach_used = 'Complete Brute Force'
-            percentage_positive_variants_conforming = percentage_positive_traces_conforming_com_brute_force
-            resulting_tree_edit_distance = resulting_tree_edit_distance_com_brute_force
-            applied_rules = applied_rules_com_brute_force
+        update_operations += repair_strategy.update_operations
+        if tree_updated_heu_brute_force_subtree_update_based:
+            resulting_tree = resulting_tree_heu_brute_force_subtree_update_based
+            tree_updated = tree_updated_heu_brute_force_subtree_update_based
+            approach_used = 'Heuristic Brute Force'
+            percentage_positive_variants_conforming = percentage_positive_traces_conforming_heu_brute_force
+            resulting_tree_edit_distance = resulting_tree_edit_distance_heu_brute_force
+            applied_rules = applied_rules_heu_brute_force
+            failed_updates = []
 
         else:
             resulting_tree = pt
 
-    return resulting_tree, approach_used, percentage_positive_variants_conforming, resulting_tree_edit_distance, applied_rules
+        # if thresholds_met_heu_brute_force_subtree_update_based == False:
+        #     repair_strategy = CompleteBruteForceSubtreeUpdate(
+        #         removal_candidates_generator, removal_candidate_activities
+        #     )
+        #     (
+        #         resulting_tree_com_brute_force_subtree_update_based,
+        #         tree_updated_com_brute_force_subtree_update_based,
+        #         thresholds_met_com_brute_force_subtree_update_based,
+        #         percentage_positive_traces_conforming_com_brute_force,
+        #         resulting_tree_edit_distance_com_brute_force,
+        #         applied_rules_com_brute_force,
+        #     ) = repair_strategy.apply_complete_brute_force_subtree_update_based_reduction()
+        #
+        #     if tree_updated_com_brute_force_subtree_update_based:
+        #         resulting_tree = resulting_tree_com_brute_force_subtree_update_based
+        #         tree_updated = tree_updated_com_brute_force_subtree_update_based
+        #         approach_used = 'Complete Brute Force'
+        #         percentage_positive_variants_conforming = percentage_positive_traces_conforming_com_brute_force
+        #         resulting_tree_edit_distance = resulting_tree_edit_distance_com_brute_force
+        #         applied_rules = applied_rules_com_brute_force
+        #         failed_updates = []
+        #         update_operations += repair_strategy.update_operations
+        #
+        #     else:
+        #         resulting_tree = pt
+
+    return (tree_updated, resulting_tree, approach_used, percentage_positive_variants_conforming,
+            resulting_tree_edit_distance, applied_rules, failed_updates, update_operations)
 
 
 def apply_frequency_rating_based_negative_process_model_repair(

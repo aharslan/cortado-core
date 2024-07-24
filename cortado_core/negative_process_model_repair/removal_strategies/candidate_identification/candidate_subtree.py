@@ -21,6 +21,11 @@ class CandidateSubtree:
     min_pm: float
     min_pm_approach: str
 
+    rating: float = None
+    rating_approach: str = None
+    sequence_in_parallel: list[int] = None
+    execution_sequence_of_child_subtrees_negative: list[int] = None
+
     def __init__(self):
         self.node_id = None
         self.candidate_activities = []
