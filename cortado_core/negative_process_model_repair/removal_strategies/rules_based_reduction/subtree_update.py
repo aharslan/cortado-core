@@ -199,38 +199,25 @@ class SubtreeUpdate:
 
         for i in range(len(subsequent_sequences_excluding_repetitions)):
 
-            if i == 0:  # first subsequence
-                # if len(subsequent_sequences_excluding_repetitions[i]) == 1:
-                #     pre_sequences.extend([subsequent_sequences_excluding_repetitions[i]])
-                # else:
-                if len(subsequent_sequences_excluding_repetitions) == 1:  # only one single subsequence
+            if i == 0 and len(set(execution_sequence_of_child_subtrees)) >= 3:  # first subsequence
+                # only one item in first subsequence and there are atleast three unique elements in execution_sequence_of_child_subtrees
+                if (len(subsequent_sequences_excluding_repetitions[0]) == 1):
+                    pre_sequences.extend(subsequent_sequences_excluding_repetitions[i])
+
+                else:  # more than one item in the last subsequence
                     pre_sequences.extend(generate_prefix_combinations_of_subsequent_items(
                         subsequent_sequences_excluding_repetitions[i]))
 
-                    # mid_sequences.extend(generate_combinations_of_subsequent_items(
-                    #     subsequent_sequences_excluding_repetitions[i][1:-1], 1))
-                else:  # more than one subsequence
-                    pre_sequences.extend(generate_prefix_combinations_of_subsequent_items(
-                        subsequent_sequences_excluding_repetitions[i]))
-
-                    # mid_sequences.extend(generate_combinations_of_subsequent_items(
-                    #     subsequent_sequences_excluding_repetitions[i][1:], 1))
-
-            if i == len(subsequent_sequences_excluding_repetitions) - 1:  # last subsequence
-                # if len(subsequent_sequences_excluding_repetitions[i]) == 1:
-                #     post_sequences.extend([subsequent_sequences_excluding_repetitions[i]])
-                # else:
-                if len(subsequent_sequences_excluding_repetitions) == 1:  # only one single subsequence
-                    post_sequences.extend(generate_postfix_combinations_of_subsequent_items(
-                        subsequent_sequences_excluding_repetitions[i]))
-                else:  # more than one subsequence
+            if i == len(subsequent_sequences_excluding_repetitions) - 1 and len(
+                set(execution_sequence_of_child_subtrees)) >= 3:  # last subsequence
+                # only one item in last subsequence and there are atleast three unique elements in execution_sequence_of_child_subtrees
+                if (len(subsequent_sequences_excluding_repetitions[
+                            len(subsequent_sequences_excluding_repetitions) - 1]) == 1):
+                    post_sequences.extend(subsequent_sequences_excluding_repetitions[i])
+                else:  # more than one item in the first subsequence
                     post_sequences.extend(generate_postfix_combinations_of_subsequent_items(
                         subsequent_sequences_excluding_repetitions[i]))
 
-                    # mid_sequences.extend(generate_combinations_of_subsequent_items(
-                    #     subsequent_sequences_excluding_repetitions[i][:-1], 1))
-
-            # if i != 0 and i != len(subsequent_sequences_excluding_repetitions) - 1: # middle subsequences
             if len(subsequent_sequences_excluding_repetitions[i]) > 4:
                 mid_sequences.extend(generate_mid_combinations_of_subsequent_items(
                     subsequent_sequences_excluding_repetitions[i]))
@@ -306,7 +293,8 @@ def get_subsequent_subtree_execution_sequences_excluding_repetitions(
         if len(temp_subsequent_sequences_excluding_repetitions) == 1:
             subsequent_sequences_excluding_repetitions.extend(temp_subsequent_sequences_excluding_repetitions)
         else:
-            subsequent_sequences_excluding_repetitions.append(temp_subsequent_sequences_excluding_repetitions)
+            for sequence in temp_subsequent_sequences_excluding_repetitions:
+                subsequent_sequences_excluding_repetitions.append(sequence)
 
     return subsequent_sequences_excluding_repetitions, execution_sequence_of_child_subtrees, trace_frequencies_corresponding_to_sequences
 
@@ -369,7 +357,7 @@ def generate_combinations_of_subsequent_items(list_of_ids: list[int], min_length
 
 def generate_prefix_combinations_of_subsequent_items(list_of_ids: list[int]) -> list[list[int]]:
     permutations = []
-    for i in range(1, len(list_of_ids) - 1):
+    for i in range(1, len(list_of_ids)):
         remove_pairs = [list_of_ids[0:i]]
         perms = [list(t) for t in list(itertools.permutations(list_of_ids, i))]
         filtered_perms = [x for x in perms if x not in remove_pairs]
@@ -380,7 +368,7 @@ def generate_prefix_combinations_of_subsequent_items(list_of_ids: list[int]) -> 
 
 def generate_postfix_combinations_of_subsequent_items(list_of_ids: list[int]) -> list[list[int]]:
     permutations = []
-    for i in range(1, len(list_of_ids) - 1):
+    for i in range(1, len(list_of_ids)):
         remove_pairs = [list_of_ids[len(list_of_ids) - i:]]
         perms = [list(t) for t in list(itertools.permutations(list_of_ids, i))]
         filtered_perms = [x for x in perms if x not in remove_pairs]
