@@ -202,7 +202,7 @@ class SubtreeUpdate:
             if i == 0 and len(set(execution_sequence_of_child_subtrees)) >= 3:  # first subsequence
                 # only one item in first subsequence and there are atleast three unique elements in execution_sequence_of_child_subtrees
                 if (len(subsequent_sequences_excluding_repetitions[0]) == 1):
-                    pre_sequences.extend(subsequent_sequences_excluding_repetitions[i])
+                    pre_sequences.extend([subsequent_sequences_excluding_repetitions[i]])
 
                 else:  # more than one item in the last subsequence
                     pre_sequences.extend(generate_prefix_combinations_of_subsequent_items(
@@ -213,7 +213,7 @@ class SubtreeUpdate:
                 # only one item in last subsequence and there are atleast three unique elements in execution_sequence_of_child_subtrees
                 if (len(subsequent_sequences_excluding_repetitions[
                             len(subsequent_sequences_excluding_repetitions) - 1]) == 1):
-                    post_sequences.extend(subsequent_sequences_excluding_repetitions[i])
+                    post_sequences.extend([subsequent_sequences_excluding_repetitions[i]])
                 else:  # more than one item in the first subsequence
                     post_sequences.extend(generate_postfix_combinations_of_subsequent_items(
                         subsequent_sequences_excluding_repetitions[i]))
@@ -293,8 +293,12 @@ def get_subsequent_subtree_execution_sequences_excluding_repetitions(
         if len(temp_subsequent_sequences_excluding_repetitions) == 1:
             subsequent_sequences_excluding_repetitions.extend(temp_subsequent_sequences_excluding_repetitions)
         else:
+            k = 0
             for sequence in temp_subsequent_sequences_excluding_repetitions:
                 subsequent_sequences_excluding_repetitions.append(sequence)
+                if k==1:
+                    trace_frequencies_corresponding_to_sequences.insert(i, trace_frequencies_corresponding_to_sequences[i])
+                k+=1
 
     return subsequent_sequences_excluding_repetitions, execution_sequence_of_child_subtrees, trace_frequencies_corresponding_to_sequences
 
