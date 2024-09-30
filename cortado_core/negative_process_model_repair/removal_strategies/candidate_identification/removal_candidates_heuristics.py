@@ -157,6 +157,7 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
         )
         most_frequent_n = 0
         tally_most_frequent_n = 0
+        tally_loop_repititions_keep_traces_original = copy.deepcopy(tally_loop_repititions_keep_traces)
 
         # remove the n that corresponds to the loop repetitions in neg variant ..
         if loop_subtree_stats.do_frequency_remove in tally_loop_repititions_keep_traces:
@@ -165,8 +166,6 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
 
         loop_subtree_stats.count_positive_variants_highest_loop_repetitions = copy.deepcopy(
             tally_loop_repititions_keep_traces)
-        loop_subtree_stats.count_positive_variants_greater_repetitions_than_negative_repetitions = copy.deepcopy(
-            tally_loop_repititions_keep_traces)
 
         different_than_encoding_tuples = {}
         count_different_than_encoding_tuples = 0
@@ -174,8 +173,6 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
         for key in list(loop_subtree_stats.count_positive_variants_highest_loop_repetitions.keys()):
             if key > Constants.MAX_LENGTH_LOOP_REPETITION_ENCODING:
                 different_than_encoding_tuples[key] = \
-                loop_subtree_stats.count_positive_variants_highest_loop_repetitions[key]
-                count_different_than_encoding_tuples += \
                 loop_subtree_stats.count_positive_variants_highest_loop_repetitions[key]
                 del loop_subtree_stats.count_positive_variants_highest_loop_repetitions[key]
 
@@ -192,23 +189,19 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
         for key, value in loop_subtree_stats.count_positive_variants_highest_loop_repetitions.items():
             tally_most_frequent_n += value
 
+        positive_variants_having_lesser_repetitions_than_negative_variant = 0
+        for key, value in tally_loop_repititions_keep_traces_original.items():
+            if key not in loop_subtree_stats.count_positive_variants_highest_loop_repetitions:
+                count_different_than_encoding_tuples += value
+            if key <= loop_subtree_stats.do_frequency_remove:
+                positive_variants_having_lesser_repetitions_than_negative_variant += value
+
         loop_subtree_stats.repeat_exactly_n_pm = (
             count_different_than_encoding_tuples
             / self.positive_traces_frequency
         )
 
         # count number of positive variants having greater repetitions than the negative variant repetitions
-        positive_variants_having_greater_repetitions_than_negative_variant = 0
-        for key in list(
-            loop_subtree_stats.count_positive_variants_greater_repetitions_than_negative_repetitions.keys()):
-            # if the frequent repetition is less than do_frequency_remove:
-            if key < loop_subtree_stats.do_frequency_remove:
-                del loop_subtree_stats.count_positive_variants_greater_repetitions_than_negative_repetitions[key]
-            else:
-                positive_variants_having_greater_repetitions_than_negative_variant += \
-                    loop_subtree_stats.count_positive_variants_greater_repetitions_than_negative_repetitions[key]
-
-        positive_variants_having_lesser_repetitions_than_negative_variant = self.positive_traces_frequency - positive_variants_having_greater_repetitions_than_negative_variant
 
         loop_subtree_stats.repeat_atleast_n_pm = (
             positive_variants_having_lesser_repetitions_than_negative_variant

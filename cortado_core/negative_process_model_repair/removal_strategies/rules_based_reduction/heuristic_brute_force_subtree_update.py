@@ -137,7 +137,7 @@ class HeuristicBruteForceSubtreeUpdate(CompleteBruteForceSubtreeUpdate):
                 result = self.calculate_candidate_tree_statistics(
                     loop_update_rule.apply_repeat_exactly_n(copy.deepcopy(tree_to_update), repetitions_to_encode),
                     removal_candidate_subtree,
-                    'loop: repeat_exactly_n'
+                    'loop: repeat_exactly_n ' + str(repetitions_to_encode)
                 )
                 loop_rules_results.append(result)
 
@@ -154,7 +154,7 @@ class HeuristicBruteForceSubtreeUpdate(CompleteBruteForceSubtreeUpdate):
                     loop_update_rule.apply_repeat_at_least_n(copy.deepcopy(tree_to_update),
                                                              removal_candidate_subtree.loop_subtree_stats.do_frequency_remove),
                     removal_candidate_subtree,
-                    'loop: repeat_at_least_n'
+                    'loop: repeat_at_least_n ' + str(removal_candidate_subtree.loop_subtree_stats.do_frequency_remove)
                 )
                 loop_rules_results.append(result)
 
@@ -185,25 +185,25 @@ class HeuristicBruteForceSubtreeUpdate(CompleteBruteForceSubtreeUpdate):
             self.get_all_possible_sequentializations_for_parallel_operator_using_neg_variant(
                 removal_candidate_subtree))
 
-        dynamic_sequences_negative_pruned = prune_dynamic_sequences_negative(
+        dynamic_sequences_negative_pruned = self.prune_dynamic_sequences_negative(
             subsequent_sequences_excluding_repetitions_positive,
             trace_frequencies_corresponding_to_sequences_positive,
             dynamic_sequences_negative
         )
 
-        pre_sequences_negative_pruned = prune_pre_sequences_negative(
+        pre_sequences_negative_pruned = self.prune_pre_sequences_negative(
             subsequent_sequences_excluding_repetitions_positive,
             trace_frequencies_corresponding_to_sequences_positive,
             pre_sequences_negative
         )
 
-        post_sequences_negative_pruned = prune_post_sequences_negative(
+        post_sequences_negative_pruned = self.prune_post_sequences_negative(
             subsequent_sequences_excluding_repetitions_positive,
             trace_frequencies_corresponding_to_sequences_positive,
             post_sequences_negative
         )
 
-        mid_sequences_negative_pruned = prune_mid_sequences_negative(
+        mid_sequences_negative_pruned = self.prune_mid_sequences_negative(
             subsequent_sequences_excluding_repetitions_positive,
             trace_frequencies_corresponding_to_sequences_positive,
             mid_sequences_negative
@@ -296,134 +296,138 @@ class HeuristicBruteForceSubtreeUpdate(CompleteBruteForceSubtreeUpdate):
         return parallel_rules_results
 
 
-def prune_dynamic_sequences_negative(subsequent_sequences_excluding_repetitions_positive: list[list[int]],
-                                     trace_frequencies_corresponding_to_sequences_positive: list[int],
-                                     dynamic_sequences_negative: list[list[int]]) -> dict:
-    dynamic_sequences_negative_pruned = {}
-    for dynamic_sequence in dynamic_sequences_negative:
-        for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
-            for j in range(len(subsequent_sequences_excluding_repetitions_positive[i])):
-                if isinstance(subsequent_sequences_excluding_repetitions_positive[i][j], list):
-                    if is_subarr_in_same_sequence_in_arr(dynamic_sequence,
-                                                         subsequent_sequences_excluding_repetitions_positive[i][j]):
-                        if str(dynamic_sequence) in dynamic_sequences_negative_pruned:
-                            dynamic_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
-                                trace_frequencies_corresponding_to_sequences_positive[i])
-                            break
-                        else:
-                            dynamic_sequences_negative_pruned[str(dynamic_sequence)] = \
-                                {'sequence': dynamic_sequence,
-                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
-                            break
-                else:
-                    if is_subarr_in_same_sequence_in_arr(dynamic_sequence,
-                                                         subsequent_sequences_excluding_repetitions_positive[i]):
-                        if str(dynamic_sequence) in dynamic_sequences_negative_pruned:
-                            dynamic_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
-                                trace_frequencies_corresponding_to_sequences_positive[i])
-                            break
-                        else:
-                            dynamic_sequences_negative_pruned[str(dynamic_sequence)] = \
-                                {'sequence': dynamic_sequence,
-                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
-                            break
-
-    return dynamic_sequences_negative_pruned
-
-
-def prune_pre_sequences_negative(subsequent_sequences_excluding_repetitions_positive: list[list[int]],
-                                 trace_frequencies_corresponding_to_sequences_positive: list[int],
-                                 pre_sequences_negative: list[list[int]]) -> dict:
-    pre_sequences_negative_pruned = {}
-    for dynamic_sequence in pre_sequences_negative:
-        for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
-
-            if isinstance(subsequent_sequences_excluding_repetitions_positive[i][0], list):
-                if is_left_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i][0]):
-                    if str(dynamic_sequence) in pre_sequences_negative_pruned:
-                        pre_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
-                            trace_frequencies_corresponding_to_sequences_positive[i])
-                    else:
-                        pre_sequences_negative_pruned[str(dynamic_sequence)] = \
-                            {'sequence': dynamic_sequence,
-                             'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
-            else:
-                if is_left_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i]):
-                    if str(dynamic_sequence) in pre_sequences_negative_pruned:
-                        pre_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
-                            trace_frequencies_corresponding_to_sequences_positive[i])
-                    else:
-                        pre_sequences_negative_pruned[str(dynamic_sequence)] = \
-                            {'sequence': dynamic_sequence,
-                             'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
-
-    return pre_sequences_negative_pruned
-
-
-def prune_post_sequences_negative(subsequent_sequences_excluding_repetitions_positive: list[list[int]],
-                                  trace_frequencies_corresponding_to_sequences_positive: list[int],
-                                  post_sequences_negative: list[list[int]]) -> dict:
-    post_sequences_negative_pruned = {}
-    for dynamic_sequence in post_sequences_negative:
-        for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
-
-            if isinstance(subsequent_sequences_excluding_repetitions_positive[i][
-                              len(subsequent_sequences_excluding_repetitions_positive[i]) - 1], list):
-                if is_right_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i][
-                    len(subsequent_sequences_excluding_repetitions_positive[i]) - 1]):
-                    if str(dynamic_sequence) in post_sequences_negative_pruned:
-                        post_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
-                            trace_frequencies_corresponding_to_sequences_positive[i])
-                    else:
-                        post_sequences_negative_pruned[str(dynamic_sequence)] = \
-                            {'sequence': dynamic_sequence,
-                             'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
-            else:
-                if is_right_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i]):
-                    if str(dynamic_sequence) in post_sequences_negative_pruned:
-                        post_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
-                            trace_frequencies_corresponding_to_sequences_positive[i])
-                    else:
-                        post_sequences_negative_pruned[str(dynamic_sequence)] = \
-                            {'sequence': dynamic_sequence,
-                             'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
-
-    return post_sequences_negative_pruned
-
-
-def prune_mid_sequences_negative(subsequent_sequences_excluding_repetitions_positive: list[list[int]],
-                                 trace_frequencies_corresponding_to_sequences_positive: list[int],
-                                 mid_sequences_negative: list[list[int]]) -> dict:
-    mid_sequences_negative_pruned = {}
-    for mid_sequence in mid_sequences_negative:
-        for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
-            for j in range(len(subsequent_sequences_excluding_repetitions_positive[i])):
-                if isinstance(subsequent_sequences_excluding_repetitions_positive[i][j], list):
-                    if is_mid_sequence_in_execution_sequence(mid_sequence,
+    def prune_dynamic_sequences_negative(self,
+                                         subsequent_sequences_excluding_repetitions_positive: list[list[int]],
+                                         trace_frequencies_corresponding_to_sequences_positive: list[int],
+                                         dynamic_sequences_negative: list[list[int]]) -> dict:
+        dynamic_sequences_negative_pruned = {}
+        for dynamic_sequence in dynamic_sequences_negative:
+            for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
+                for j in range(len(subsequent_sequences_excluding_repetitions_positive[i])):
+                    if isinstance(subsequent_sequences_excluding_repetitions_positive[i][j], list):
+                        if is_subarr_in_same_sequence_in_arr(dynamic_sequence,
                                                              subsequent_sequences_excluding_repetitions_positive[i][j]):
-                        if str(mid_sequence) in mid_sequences_negative_pruned:
-                            mid_sequences_negative_pruned[str(mid_sequence)]['trace_frequency'] += (
-                                trace_frequencies_corresponding_to_sequences_positive[i])
-                            break
-                        else:
-                            mid_sequences_negative_pruned[str(mid_sequence)] = \
-                                {'sequence': mid_sequence,
-                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
-                            break
-                else:
-                    if is_mid_sequence_in_execution_sequence(mid_sequence,
+                            if str(dynamic_sequence) in dynamic_sequences_negative_pruned:
+                                dynamic_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                                    trace_frequencies_corresponding_to_sequences_positive[i])
+                                break
+                            else:
+                                dynamic_sequences_negative_pruned[str(dynamic_sequence)] = \
+                                    {'sequence': dynamic_sequence,
+                                     'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                                break
+                    else:
+                        if is_subarr_in_same_sequence_in_arr(dynamic_sequence,
                                                              subsequent_sequences_excluding_repetitions_positive[i]):
-                        if str(mid_sequence) in mid_sequences_negative_pruned:
-                            mid_sequences_negative_pruned[str(mid_sequence)]['trace_frequency'] += (
-                                trace_frequencies_corresponding_to_sequences_positive[i])
-                            break
-                        else:
-                            mid_sequences_negative_pruned[str(mid_sequence)] = \
-                                {'sequence': mid_sequence,
-                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
-                            break
+                            if str(dynamic_sequence) in dynamic_sequences_negative_pruned:
+                                dynamic_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                                    trace_frequencies_corresponding_to_sequences_positive[i])
+                                break
+                            else:
+                                dynamic_sequences_negative_pruned[str(dynamic_sequence)] = \
+                                    {'sequence': dynamic_sequence,
+                                     'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                                break
 
-    return mid_sequences_negative_pruned
+        return dynamic_sequences_negative_pruned
+
+
+    def prune_pre_sequences_negative(self,
+                                     subsequent_sequences_excluding_repetitions_positive: list[list[int]],
+                                     trace_frequencies_corresponding_to_sequences_positive: list[int],
+                                     pre_sequences_negative: list[list[int]]) -> dict:
+        pre_sequences_negative_pruned = {}
+        for dynamic_sequence in pre_sequences_negative:
+            for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
+
+                if isinstance(subsequent_sequences_excluding_repetitions_positive[i][0], list):
+                    if is_left_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i][0]):
+                        if str(dynamic_sequence) in pre_sequences_negative_pruned:
+                            pre_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                                trace_frequencies_corresponding_to_sequences_positive[i])
+                        else:
+                            pre_sequences_negative_pruned[str(dynamic_sequence)] = \
+                                {'sequence': dynamic_sequence,
+                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                else:
+                    if is_left_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i]):
+                        if str(dynamic_sequence) in pre_sequences_negative_pruned:
+                            pre_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                                trace_frequencies_corresponding_to_sequences_positive[i])
+                        else:
+                            pre_sequences_negative_pruned[str(dynamic_sequence)] = \
+                                {'sequence': dynamic_sequence,
+                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+
+        return pre_sequences_negative_pruned
+
+
+    def prune_post_sequences_negative(self,
+                                      subsequent_sequences_excluding_repetitions_positive: list[list[int]],
+                                      trace_frequencies_corresponding_to_sequences_positive: list[int],
+                                      post_sequences_negative: list[list[int]]) -> dict:
+        post_sequences_negative_pruned = {}
+        for dynamic_sequence in post_sequences_negative:
+            for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
+
+                if isinstance(subsequent_sequences_excluding_repetitions_positive[i][
+                                  len(subsequent_sequences_excluding_repetitions_positive[i]) - 1], list):
+                    if is_right_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i][
+                        len(subsequent_sequences_excluding_repetitions_positive[i]) - 1]):
+                        if str(dynamic_sequence) in post_sequences_negative_pruned:
+                            post_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                                trace_frequencies_corresponding_to_sequences_positive[i])
+                        else:
+                            post_sequences_negative_pruned[str(dynamic_sequence)] = \
+                                {'sequence': dynamic_sequence,
+                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                else:
+                    if is_right_subarray(dynamic_sequence, subsequent_sequences_excluding_repetitions_positive[i]):
+                        if str(dynamic_sequence) in post_sequences_negative_pruned:
+                            post_sequences_negative_pruned[str(dynamic_sequence)]['trace_frequency'] += (
+                                trace_frequencies_corresponding_to_sequences_positive[i])
+                        else:
+                            post_sequences_negative_pruned[str(dynamic_sequence)] = \
+                                {'sequence': dynamic_sequence,
+                                 'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+
+        return post_sequences_negative_pruned
+
+
+    def prune_mid_sequences_negative(self,
+                                     subsequent_sequences_excluding_repetitions_positive: list[list[int]],
+                                     trace_frequencies_corresponding_to_sequences_positive: list[int],
+                                     mid_sequences_negative: list[list[int]]) -> dict:
+        mid_sequences_negative_pruned = {}
+        for mid_sequence in mid_sequences_negative:
+            for i in range(len(subsequent_sequences_excluding_repetitions_positive)):
+                for j in range(len(subsequent_sequences_excluding_repetitions_positive[i])):
+                    if isinstance(subsequent_sequences_excluding_repetitions_positive[i][j], list):
+                        if is_mid_sequence_in_execution_sequence(mid_sequence,
+                                                                 subsequent_sequences_excluding_repetitions_positive[i][j]):
+                            if str(mid_sequence) in mid_sequences_negative_pruned:
+                                mid_sequences_negative_pruned[str(mid_sequence)]['trace_frequency'] += (
+                                    trace_frequencies_corresponding_to_sequences_positive[i])
+                                break
+                            else:
+                                mid_sequences_negative_pruned[str(mid_sequence)] = \
+                                    {'sequence': mid_sequence,
+                                     'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                                break
+                    else:
+                        if is_mid_sequence_in_execution_sequence(mid_sequence,
+                                                                 subsequent_sequences_excluding_repetitions_positive[i]):
+                            if str(mid_sequence) in mid_sequences_negative_pruned:
+                                mid_sequences_negative_pruned[str(mid_sequence)]['trace_frequency'] += (
+                                    trace_frequencies_corresponding_to_sequences_positive[i])
+                                break
+                            else:
+                                mid_sequences_negative_pruned[str(mid_sequence)] = \
+                                    {'sequence': mid_sequence,
+                                     'trace_frequency': trace_frequencies_corresponding_to_sequences_positive[i]}
+                                break
+
+        return mid_sequences_negative_pruned
 
 
 def is_mid_sequence_in_execution_sequence(mid_sequence, execution_sequence):
