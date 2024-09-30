@@ -7,7 +7,6 @@ from cortado_core.negative_process_model_repair.removal_strategies.candidate_ide
 from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.loop_subtree_stats import \
     LoopSubtreeStats
 
-
 @dataclass
 class CandidateSubtree:
     node_id: int
@@ -115,3 +114,21 @@ class CandidateSubtree:
             return reference
         else:
             return self.candidate_subtrees[0].get_tree_node_reference(counter + 1)
+
+
+
+@dataclass
+class Candidate:
+    removal_candidate_subtree: CandidateSubtree
+    update_rule: str
+    rating: float
+    parameters: any
+
+    def __init__(self, removal_candidate_subtree, update_rule, rating, parameters):
+        super().__init__()
+        self.removal_candidate_subtree = removal_candidate_subtree
+        self.update_rule = update_rule
+        self.rating = rating
+        self.parameters = parameters
+
+

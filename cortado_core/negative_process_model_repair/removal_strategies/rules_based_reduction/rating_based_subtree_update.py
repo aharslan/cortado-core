@@ -3,7 +3,7 @@ from pm4py.objects.process_tree.obj import Operator, ProcessTree
 from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.candidate_activity import \
     CandidateActivity
 from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.candidate_subtree import \
-    CandidateSubtree
+    CandidateSubtree, Candidate
 from cortado_core.negative_process_model_repair.removal_strategies.candidate_identification.removal_candidates_heuristics import \
     RemovalCandidatesHeuristics
 from cortado_core.negative_process_model_repair.removal_strategies.rules_based_reduction.heuristic_brute_force_subtree_update import \
@@ -14,6 +14,7 @@ from cortado_core.negative_process_model_repair.removal_strategies.rules_based_r
     LoopUpdateRule, ParallelUpdateRule
 from cortado_core.negative_process_model_repair.constants import Constants
 from cortado_core.negative_process_model_repair.temp_utils import find_tree_node_by_id
+
 
 class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
 
@@ -28,49 +29,96 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
         ProcessTree, bool, bool, float, float, str):
         brute_force_results = []
 
+        candidates: [Candidate] = []
+
         for removal_candidate_subtree in self.removal_candidate_subtrees:
             tree_to_update = copy.deepcopy(self.removal_candidates_generator.process_tree)
             result = None
 
             if removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
                 removal_candidate_subtree.rating = self.rate_sequence_sub_tree(removal_candidate_subtree)
+                candidates.append(
+                    Candidate(removal_candidate_subtree, 'sequence', removal_candidate_subtree.rating, {}))
 
             elif removal_candidate_subtree.reference.operator == Operator.XOR:
                 removal_candidate_subtree.rating = self.rate_choice_sub_tree(removal_candidate_subtree)
+                candidates.append(
+                    Candidate(removal_candidate_subtree, 'choice', removal_candidate_subtree.rating, None))
 
             elif removal_candidate_subtree.reference.operator == Operator.LOOP:
                 removal_candidate_subtree.rating, removal_candidate_subtree.rating_approach = (
                     self.rate_loop_sub_tree(removal_candidate_subtree))
+
+                candidates.append(
+                    Candidate(removal_candidate_subtree, 'remove_redundant_redo',
+                              removal_candidate_subtree.loop_subtree_stats.remove_redundant_redo_pm,
+                              None))
+                candidates.append(
+                    Candidate(removal_candidate_subtree, 'optional_redo_mandatory',
+                              removal_candidate_subtree.loop_subtree_stats.optional_redo_mandatory_pm,
+                              None))
+                candidates.append(
+                    Candidate(removal_candidate_subtree, 'repeat_exactly_n',
+                              removal_candidate_subtree.loop_subtree_stats.repeat_exactly_n_pm,
+                              None))
+                candidates.append(
+                    Candidate(removal_candidate_subtree, 'repeat_at_least_n',
+                              removal_candidate_subtree.loop_subtree_stats.repeat_atleast_n_pm,
+                              None))
             elif (
                 removal_candidate_subtree.reference.operator == Operator.PARALLEL
             ):
-                (removal_candidate_subtree.rating,
-                 removal_candidate_subtree.rating_approach,
-                 removal_candidate_subtree.sequence_in_parallel,
-                 removal_candidate_subtree.execution_sequence_of_child_subtrees_negative) = (
+                (dynamic_sequences_negative_pruned,
+                 pre_sequences_negative_pruned,
+                 post_sequences_negative_pruned,
+                 mid_sequences_negative_pruned,
+                 execution_sequence_of_child_subtrees_negative) = (
                     self.rate_parallel_sub_tree(removal_candidate_subtree))
 
-        removal_candidate_subtrees = sorted(self.removal_candidate_subtrees, key=lambda x: x.rating)
+                for seq in dynamic_sequences_negative_pruned:
+                    candidates.append(
+                        Candidate(removal_candidate_subtree, 'dynamic_sequence',
+                                  dynamic_sequences_negative_pruned[seq]['pm'],
+                                  {'sequence': dynamic_sequences_negative_pruned[seq]['sequence'],
+                                   'execution_sequence_of_child_subtrees_negative': execution_sequence_of_child_subtrees_negative}))
+                for seq in pre_sequences_negative_pruned:
+                    candidates.append(
+                        Candidate(removal_candidate_subtree, 'pre_sequence', pre_sequences_negative_pruned[seq]['pm'],
+                                  {'sequence': pre_sequences_negative_pruned[seq]['sequence'],
+                                   'execution_sequence_of_child_subtrees_negative': execution_sequence_of_child_subtrees_negative}))
+                for seq in post_sequences_negative_pruned:
+                    candidates.append(
+                        Candidate(removal_candidate_subtree, 'post_sequence', post_sequences_negative_pruned[seq]['pm'],
+                                  {'sequence': post_sequences_negative_pruned[seq]['sequence'],
+                                   'execution_sequence_of_child_subtrees_negative': execution_sequence_of_child_subtrees_negative}))
+                for seq in mid_sequences_negative_pruned:
+                    candidates.append(
+                        Candidate(removal_candidate_subtree, 'mid_sequence', mid_sequences_negative_pruned[seq]['pm'],
+                                  {'sequence': mid_sequences_negative_pruned[seq]['sequence'],
+                                   'execution_sequence_of_child_subtrees_negative': execution_sequence_of_child_subtrees_negative}))
+
+        candidates = sorted(candidates, key=lambda x: x.rating)
+        # removal_candidate_subtrees = sorted(self.removal_candidate_subtrees, key=lambda x: x.rating)
 
         successful_results = []
         failed_updates = []
-        for removal_candidate_subtree in removal_candidate_subtrees:
+        for candidate in candidates:
 
-            if removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
+            if candidate.removal_candidate_subtree.reference.operator == Operator.SEQUENCE:
                 result = self.handle_sequence_operator(
-                    removal_candidate_subtree, copy.deepcopy(tree_to_update)
+                    candidate.removal_candidate_subtree, copy.deepcopy(tree_to_update)
                 )
-            elif removal_candidate_subtree.reference.operator == Operator.XOR:
+            elif candidate.removal_candidate_subtree.reference.operator == Operator.XOR:
                 result = self.handle_choice_operator(
-                    removal_candidate_subtree, copy.deepcopy(tree_to_update)
+                    candidate.removal_candidate_subtree, copy.deepcopy(tree_to_update)
                 )
-            elif removal_candidate_subtree.reference.operator == Operator.LOOP:
+            elif candidate.removal_candidate_subtree.reference.operator == Operator.LOOP:
                 result = self.handle_loop_operator(
-                    removal_candidate_subtree, copy.deepcopy(tree_to_update)
+                    candidate, copy.deepcopy(tree_to_update)
                 )
-            elif removal_candidate_subtree.reference.operator == Operator.PARALLEL:
+            elif candidate.removal_candidate_subtree.reference.operator == Operator.PARALLEL:
                 result = self.handle_parallel_operator(
-                    removal_candidate_subtree, copy.deepcopy(tree_to_update)
+                    candidate, copy.deepcopy(tree_to_update)
                 )
 
             if result is not None and result['negative_trace_fits'] == False:
@@ -91,10 +139,10 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
                 break
 
         successful_results = sorted(successful_results,
-                                                key=lambda x: (
-                                                    -x["percentage_positive_traces_conforming"],
-                                                    x["resulting_tree_edit_distance"])
-                                                )
+                                    key=lambda x: (
+                                        -x["percentage_positive_traces_conforming"],
+                                        x["resulting_tree_edit_distance"])
+                                    )
         if len(successful_results) > 0:
             return (
                 successful_results[0]['updated_tree'],
@@ -106,7 +154,6 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
                 failed_updates)
         else:
             return (None, False, False, None, None, None, [])
-
 
     def rate_sequence_sub_tree(self, removal_candidate_subtree: CandidateSubtree):
         # count total number of positive traces executing this subtree
@@ -180,11 +227,20 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
                                              sorted(dynamic_sequences_negative_pruned.items(),
                                                     key=lambda item: item[1]['trace_frequency'])}
 
-        if (len(dynamic_sequences_negative_pruned) > 0
-            and dynamic_sequences_negative_pruned[list(dynamic_sequences_negative_pruned.keys())[0]][
-                'trace_frequency'] > maximum_positive_traces_in_a_sequence):
+        if len(dynamic_sequences_negative_pruned) > 0:
+
+            trace_count = 0
+            for value in dynamic_sequences_negative_pruned:
+                seq = dynamic_sequences_negative_pruned[value]['sequence']
+                f = dynamic_sequences_negative_pruned[value]['trace_frequency']
+                for pos_child_sequence in execution_sequence_of_child_subtrees_positive:
+                    if not str(seq)[1:-1] in str(pos_child_sequence)[1:-1]:
+                        trace_count += f
+                dynamic_sequences_negative_pruned[value][
+                    'pm'] = trace_count / self.removal_candidates_generator.positive_traces_frequency
+
             maximum_positive_traces_in_a_sequence = \
-            dynamic_sequences_negative_pruned[list(dynamic_sequences_negative_pruned.keys())[0]]['trace_frequency']
+                dynamic_sequences_negative_pruned[list(dynamic_sequences_negative_pruned.keys())[0]]['trace_frequency']
             sequence_approach_with_maximum_traces = 'dynamic_sequence'
             sequence = dynamic_sequences_negative_pruned[list(dynamic_sequences_negative_pruned.keys())[0]]['sequence']
 
@@ -198,11 +254,20 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
                                          sorted(pre_sequences_negative_pruned.items(),
                                                 key=lambda item: item[1]['trace_frequency'])}
 
-        if (len(pre_sequences_negative_pruned) > 0
-            and pre_sequences_negative_pruned[list(pre_sequences_negative_pruned.keys())[0]][
-                'trace_frequency'] > maximum_positive_traces_in_a_sequence):
+        if len(pre_sequences_negative_pruned) > 0:
+
+            trace_count = 0
+            for value in pre_sequences_negative_pruned:
+                seq = pre_sequences_negative_pruned[value]['sequence']
+                f = pre_sequences_negative_pruned[value]['trace_frequency']
+                for pos_child_sequence in execution_sequence_of_child_subtrees_positive:
+                    if not pos_child_sequence[:len(seq)] == seq:
+                        trace_count += f
+                pre_sequences_negative_pruned[value][
+                    'pm'] = trace_count / self.removal_candidates_generator.positive_traces_frequency
+
             maximum_positive_traces_in_a_sequence = \
-            pre_sequences_negative_pruned[list(pre_sequences_negative_pruned.keys())[0]]['trace_frequency']
+                pre_sequences_negative_pruned[list(pre_sequences_negative_pruned.keys())[0]]['trace_frequency']
             sequence_approach_with_maximum_traces = 'pre_sequence'
             sequence = pre_sequences_negative_pruned[list(pre_sequences_negative_pruned.keys())[0]]['sequence']
 
@@ -216,9 +281,18 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
                                           sorted(post_sequences_negative_pruned.items(),
                                                  key=lambda item: item[1]['trace_frequency'])}
 
-        if (len(post_sequences_negative_pruned) > 0
-            and post_sequences_negative_pruned[list(post_sequences_negative_pruned.keys())[0]][
-                'trace_frequency'] > maximum_positive_traces_in_a_sequence):
+        if len(post_sequences_negative_pruned) > 0:
+
+            trace_count = 0
+            for value in post_sequences_negative_pruned:
+                seq = post_sequences_negative_pruned[value]['sequence']
+                f = post_sequences_negative_pruned[value]['trace_frequency']
+                for pos_child_sequence in execution_sequence_of_child_subtrees_positive:
+                    if not pos_child_sequence[-len(seq):] == seq:
+                        trace_count += f
+                post_sequences_negative_pruned[value][
+                    'pm'] = trace_count / self.removal_candidates_generator.positive_traces_frequency
+
             maximum_positive_traces_in_a_sequence = \
                 post_sequences_negative_pruned[list(post_sequences_negative_pruned.keys())[0]]['trace_frequency']
             sequence_approach_with_maximum_traces = 'post_sequence'
@@ -234,9 +308,20 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
                                          sorted(mid_sequences_negative_pruned.items(),
                                                 key=lambda item: item[1]['trace_frequency'])}
 
-        if (len(mid_sequences_negative_pruned) > 0
-            and mid_sequences_negative_pruned[list(mid_sequences_negative_pruned.keys())[0]][
-                'trace_frequency'] > maximum_positive_traces_in_a_sequence):
+        if len(mid_sequences_negative_pruned) > 0:
+
+            trace_count = 0
+            for value in mid_sequences_negative_pruned:
+                seq = mid_sequences_negative_pruned[value]['sequence']
+                f = mid_sequences_negative_pruned[value]['trace_frequency']
+                for pos_child_sequence in execution_sequence_of_child_subtrees_positive:
+                    if (not set(seq['left']) == set(pos_child_sequence[0:len(seq['left'])]) and
+                        not seq['middle'] == pos_child_sequence[
+                                             len(seq['left']):len(seq['left']) + len(seq['middle'])]):
+                        trace_count += f
+                mid_sequences_negative_pruned[value][
+                    'pm'] = trace_count / self.removal_candidates_generator.positive_traces_frequency
+
             maximum_positive_traces_in_a_sequence = \
                 mid_sequences_negative_pruned[list(mid_sequences_negative_pruned.keys())[0]]['trace_frequency']
             sequence_approach_with_maximum_traces = 'mid_sequence'
@@ -245,61 +330,63 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
         rating = 1
         if maximum_positive_traces_in_a_sequence != -1:
             rating = 1 - (
-                    maximum_positive_traces_in_a_sequence / self.removal_candidates_generator.positive_traces_frequency)
-        return rating, sequence_approach_with_maximum_traces, sequence, execution_sequence_of_child_subtrees_negative
+                maximum_positive_traces_in_a_sequence / self.removal_candidates_generator.positive_traces_frequency)
+        return (dynamic_sequences_negative_pruned, pre_sequences_negative_pruned, post_sequences_negative_pruned,
+                mid_sequences_negative_pruned, execution_sequence_of_child_subtrees_negative)
 
     def handle_loop_operator(
-        self, removal_candidate_subtree: CandidateSubtree, tree_to_update: ProcessTree
+        self, candidate: Candidate, tree_to_update: ProcessTree
     ):
         loop_rule_result = None
-        loop_update_rule = LoopUpdateRule(removal_candidate_subtree)
+        loop_update_rule = LoopUpdateRule(candidate.removal_candidate_subtree)
 
         do_frequency_remove, redo_frequency_remove = (
-            self.removal_candidates_generator.get_do_and_redo_frequencies_negative_variant(removal_candidate_subtree))
+            self.removal_candidates_generator.get_do_and_redo_frequencies_negative_variant(
+                candidate.removal_candidate_subtree))
 
-        if removal_candidate_subtree.rating_approach == 'remove_redundant_redo':
+        if candidate.update_rule == 'remove_redundant_redo':
             try:
                 loop_rule_result = self.calculate_candidate_tree_statistics(
                     loop_update_rule.apply_remove_redundant_redo(copy.deepcopy(tree_to_update)),
-                    removal_candidate_subtree,
+                    candidate.removal_candidate_subtree,
                     'loop: remove-redundant-redo'
                 )
 
             except Exception as e:
                 print("Rule application failed (loop: remove-redundant-redo): ", e)
 
-        elif removal_candidate_subtree.rating_approach == 'optional_redo_mandatory':
+        elif candidate.update_rule == 'optional_redo_mandatory':
             try:
                 loop_rule_result = self.calculate_candidate_tree_statistics(
                     loop_update_rule.apply_optional_redo_mandatory(copy.deepcopy(tree_to_update)),
-                    removal_candidate_subtree,
+                    candidate.removal_candidate_subtree,
                     'loop: optional_redo_mandatory'
                 )
 
             except Exception as e:
                 print("Rule application failed (loop: optional_redo_mandatory): ", e)
 
-        elif removal_candidate_subtree.rating_approach == 'repeat_exactly_n':
+        elif candidate.update_rule == 'repeat_exactly_n':
             try:
                 repetitions_to_encode: list[int] = list(
-                    removal_candidate_subtree.loop_subtree_stats.count_positive_variants_highest_loop_repetitions.keys()
+                    candidate.removal_candidate_subtree.loop_subtree_stats.count_positive_variants_highest_loop_repetitions.keys()
                 )
 
                 loop_rule_result = self.calculate_candidate_tree_statistics(
                     loop_update_rule.apply_repeat_exactly_n(copy.deepcopy(tree_to_update), repetitions_to_encode),
-                    removal_candidate_subtree,
+                    candidate.removal_candidate_subtree,
                     'loop: repeat_exactly_n'
                 )
 
             except Exception as e:
                 print("Rule application failed (loop: repeat_exactly_n): ", e)
 
-        elif removal_candidate_subtree.rating_approach == 'repeat_at_least_n':
+        elif candidate.update_rule == 'repeat_at_least_n':
             try:
                 loop_rule_result = self.calculate_candidate_tree_statistics(
                     loop_update_rule.apply_repeat_at_least_n(copy.deepcopy(tree_to_update),
-                                                             removal_candidate_subtree.loop_subtree_stats.do_frequency_remove),
-                    removal_candidate_subtree,
+                                                             candidate.removal_candidate_subtree.loop_subtree_stats.do_frequency_remove),
+                    candidate.removal_candidate_subtree,
                     'loop: repeat_at_least_n'
                 )
 
@@ -309,55 +396,56 @@ class RatingBasedSubtreeUpdate(HeuristicBruteForceSubtreeUpdate):
         return loop_rule_result
 
     def handle_parallel_operator(
-        self, removal_candidate_subtree: CandidateSubtree, tree_to_update: ProcessTree
+        self, candidate: Candidate, tree_to_update: ProcessTree
     ) -> ProcessTree:
         parallel_rules_result = None
-        parallel_update_rule = ParallelUpdateRule(removal_candidate_subtree)
+        parallel_update_rule = ParallelUpdateRule(candidate.removal_candidate_subtree)
 
-        if removal_candidate_subtree.rating_approach == 'pre_sequence':
+        if candidate.update_rule == 'pre_sequence':
             try:
                 parallel_rules_result = self.calculate_candidate_tree_statistics(
                     parallel_update_rule.apply_pre_sequeltialization_rule(copy.deepcopy(tree_to_update),
-                                                                          removal_candidate_subtree.sequence_in_parallel),
-                    removal_candidate_subtree,
-                    'parallel: pre sequentialization ' + str(removal_candidate_subtree.sequence_in_parallel)
+                                                                          candidate.parameters['sequence']),
+                    candidate.removal_candidate_subtree,
+                    'parallel: pre sequentialization ' + str(candidate.parameters['sequence'])
                 )
 
             except Exception as e:
                 print("Rule application failed (parallel: pre sequentialization): ", e)
 
-        elif removal_candidate_subtree.rating_approach == 'post_sequence':
+        elif candidate.update_rule == 'post_sequence':
             try:
                 parallel_rules_result = self.calculate_candidate_tree_statistics(
                     parallel_update_rule.apply_post_sequeltialization_rule(copy.deepcopy(tree_to_update),
-                                                                           removal_candidate_subtree.sequence_in_parallel),
-                    removal_candidate_subtree,
-                    'parallel: post sequentialization ' + str(removal_candidate_subtree.sequence_in_parallel)
+                                                                           candidate.parameters['sequence']),
+                    candidate.removal_candidate_subtree,
+                    'parallel: post sequentialization ' + str(candidate.parameters['sequence'])
                 )
 
             except Exception as e:
                 print("Rule application failed (parallel: post sequentialization): ", e)
 
-        elif removal_candidate_subtree.rating_approach == 'mid_sequence':
+        elif candidate.update_rule == 'mid_sequence':
             try:
                 parallel_rules_result = self.calculate_candidate_tree_statistics(
                     parallel_update_rule.apply_mid_sequeltialization_rule(copy.deepcopy(tree_to_update),
-                                                                          removal_candidate_subtree.sequence_in_parallel,
-                                                                          removal_candidate_subtree.execution_sequence_of_child_subtrees_negative),
-                    removal_candidate_subtree,
-                    'parallel: mid sequentialization ' + str(removal_candidate_subtree.sequence_in_parallel)
+                                                                          candidate.parameters['sequence'],
+                                                                          candidate.parameters[
+                                                                              'execution_sequence_of_child_subtrees_negative']),
+                    candidate.removal_candidate_subtree,
+                    'parallel: mid sequentialization ' + str(candidate.parameters['sequence'])
                 )
 
             except Exception as e:
                 print("Rule application failed (parallel: mid sequentialization): ", e)
 
-        elif removal_candidate_subtree.rating_approach == 'dynamic_sequence':
+        elif candidate.update_rule == 'dynamic_sequence':
             try:
                 parallel_rules_result = self.calculate_candidate_tree_statistics(
                     parallel_update_rule.apply_dynamic_sequeltialization_rule(copy.deepcopy(tree_to_update),
-                                                                              removal_candidate_subtree.sequence_in_parallel),
-                    removal_candidate_subtree,
-                    'parallel: dynamic sequentialization ' + str(removal_candidate_subtree.sequence_in_parallel)
+                                                                              candidate.parameters['sequence']),
+                    candidate.removal_candidate_subtree,
+                    'parallel: dynamic sequentialization ' + str(candidate.parameters['sequence'])
                 )
 
             except Exception as e:

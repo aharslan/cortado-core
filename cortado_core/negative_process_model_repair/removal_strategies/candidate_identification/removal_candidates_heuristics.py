@@ -69,6 +69,7 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
             loop_subtree_stats.do_frequency_remove,
             loop_subtree_stats.redo_frequency_remove,
             x,
+            loop_subtree_stats.do_frequency_trace_remove,
             loop_subtree_stats.redo_frequency_trace_remove
         ) = self.calculate_loop_statistics_from_annotated_labels(
             loop_subtree_stats.loop_labels_annotated_remove
@@ -78,6 +79,7 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
             loop_subtree_stats.do_frequency_keep,
             loop_subtree_stats.redo_frequency_keep,
             loop_subtree_stats.loop_repitition_per_trace_keep,
+            loop_subtree_stats.do_frequency_trace_keep,
             loop_subtree_stats.redo_frequency_trace_keep
         ) = self.calculate_loop_statistics_from_annotated_labels(
             loop_subtree_stats.loop_labels_annotated_keep
@@ -117,11 +119,17 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
                 / self.positive_traces_frequency
             )
 
-        if loop_subtree_stats.redo_frequency_trace_keep != 0 and is_tau(
+        count_positive_traces_never_executing_redo = 0
+        for i in range(len(loop_subtree_stats.loop_labels_annotated_keep)):
+            if len(loop_subtree_stats.loop_labels_annotated_keep[i]) == 1:
+                count_positive_traces_never_executing_redo += loop_subtree_stats.loop_labels_annotated_keep[i][0][
+                    'frequency']
+
+        if is_tau(
             subtree_candidate.reference.children[0]
         ) and loop_subtree_stats.redo_frequency_trace_remove == 0:
-            loop_subtree_stats.optional_redo_mandatory_pm = 1 - (
-                loop_subtree_stats.redo_frequency_trace_keep
+            loop_subtree_stats.optional_redo_mandatory_pm = (
+                count_positive_traces_never_executing_redo
                 / self.positive_traces_frequency
             )
 
@@ -160,9 +168,15 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
         loop_subtree_stats.count_positive_variants_greater_repetitions_than_negative_repetitions = copy.deepcopy(
             tally_loop_repititions_keep_traces)
 
+        different_than_encoding_tuples = {}
+        count_different_than_encoding_tuples = 0
         # remove individual repetitions exceeding Constants.MAX_LENGTH_LOOP_REPETITION_ENCODING
         for key in list(loop_subtree_stats.count_positive_variants_highest_loop_repetitions.keys()):
             if key > Constants.MAX_LENGTH_LOOP_REPETITION_ENCODING:
+                different_than_encoding_tuples[key] = \
+                loop_subtree_stats.count_positive_variants_highest_loop_repetitions[key]
+                count_different_than_encoding_tuples += \
+                loop_subtree_stats.count_positive_variants_highest_loop_repetitions[key]
                 del loop_subtree_stats.count_positive_variants_highest_loop_repetitions[key]
 
         if (len(
@@ -178,8 +192,8 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
         for key, value in loop_subtree_stats.count_positive_variants_highest_loop_repetitions.items():
             tally_most_frequent_n += value
 
-        loop_subtree_stats.repeat_exactly_n_pm = 1 - (
-            tally_most_frequent_n
+        loop_subtree_stats.repeat_exactly_n_pm = (
+            count_different_than_encoding_tuples
             / self.positive_traces_frequency
         )
 
@@ -194,8 +208,10 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
                 positive_variants_having_greater_repetitions_than_negative_variant += \
                     loop_subtree_stats.count_positive_variants_greater_repetitions_than_negative_repetitions[key]
 
-        loop_subtree_stats.repeat_atleast_n_pm = 1 - (
-            positive_variants_having_greater_repetitions_than_negative_variant
+        positive_variants_having_lesser_repetitions_than_negative_variant = self.positive_traces_frequency - positive_variants_having_greater_repetitions_than_negative_variant
+
+        loop_subtree_stats.repeat_atleast_n_pm = (
+            positive_variants_having_lesser_repetitions_than_negative_variant
             / self.positive_traces_frequency
         )
 
@@ -211,6 +227,7 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
 
         for i in range(len(loop_labels_annotated)):
             do_frequency_trace = 0
+            do_frequency = 0
             is_redo__trace = False
             for j in range(len(loop_labels_annotated[i])):
                 if (
@@ -218,7 +235,7 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
                     and last_label != "do"
                 ):
                     do_frequency += 1
-                    do_frequency_trace += 1
+                    do_frequency_trace += loop_labels_annotated[i][j]['frequency']
                     last_label = "do"
                 elif (
                     loop_labels_annotated[i][j]["loop-location"] == "redo"
@@ -231,10 +248,10 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
             if is_redo__trace:
                 redo_frequency_trace += loop_labels_annotated[i][j]['frequency']
             loop_repitition_per_trace.append(
-                {'repititions': do_frequency_trace, 'trace-count': loop_labels_annotated[i][j]['frequency']})
+                {'repititions': do_frequency, 'trace-count': loop_labels_annotated[i][j]['frequency']})
             last_label = "redo"
 
-        return do_frequency, redo_frequency, loop_repitition_per_trace, redo_frequency_trace
+        return do_frequency, redo_frequency, loop_repitition_per_trace, do_frequency_trace, redo_frequency_trace
 
     def annotate_loop_activities_with_do_or_redo(
         self, subtree_candidate: CandidateSubtree, sublogs
@@ -301,8 +318,9 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
                                     ):
                                         match = False
 
-                                        if (len( sublogs[ subtree_candidate.reference.children[0].id][k]) > 0):
-                                            for l in range(index_l_do,len(sublogs[subtree_candidate.reference.children[0].id][k])):
+                                        if (len(sublogs[subtree_candidate.reference.children[0].id][k]) > 0):
+                                            for l in range(index_l_do,
+                                                           len(sublogs[subtree_candidate.reference.children[0].id][k])):
                                                 if (
                                                     sublogs[
                                                         subtree_candidate.reference.children[
@@ -468,7 +486,8 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
 
                 else:
                     loop_activities[i].append({"name": "tau", "loop-location": "do",
-                                               "frequency": sublogs[subtree_candidate.node_id][i].attributes['frequency']})
+                                               "frequency": sublogs[subtree_candidate.node_id][i].attributes[
+                                                   'frequency']})
                     index_k_do += 1
 
         except Exception as e:
@@ -488,6 +507,7 @@ class RemovalCandidatesHeuristics(RemovalCandidatesGenerator):
             do_frequency_remove,
             redo_frequency_remove,
             x,
+            do_frequency_trace_remove,
             redo_frequency_trace_remove
         ) = self.calculate_loop_statistics_from_annotated_labels(
             loop_labels_annotated_remove
