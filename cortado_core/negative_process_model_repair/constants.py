@@ -4,7 +4,7 @@ class Constants:
     MAX_LENGTH_LOOP_REPETITION_ENCODING = 3  # absolute number
     MIN_THRESHOLD_POSITIVE_FITTING_VARIANTS = 85.0 # percentage.
     MAX_THRESHOLD_TREE_EDIT_DISTANCE = 5 # threshold of max allowed edit distance.
-    STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD = False
+    STOP_WHEN_AN_UPDATE_MEETS_THRESHOLD = True
     USE_SUBTREE_BASED_CONFORMANCE_CHECKING = True
 
     def __init__(self):
